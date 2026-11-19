@@ -24,7 +24,7 @@
  */
 'use strict';
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.4.0';
 const DB_NAME = 'harga-bengkel';
 const BACKUP_REMINDER_DAYS = 7;
 const MAX_HISTORY = 100;
@@ -41,6 +41,9 @@ const rupiah = (n) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
 
 // "15.000" atau "Rp 15000" -> 15000 (ambil digitnya saja)
 const parsePrice = (s) => Number(String(s).replace(/[^\d]/g, ''));
+
+// 15000 -> "15.000" (tanpa "Rp", seperti kolom di nota kertas)
+const numFmt = (n) => Math.round(n || 0).toLocaleString('id-ID');
 
 const norm = (s) => String(s).toLowerCase().trim();
 const byName = (a, b) => a.name.localeCompare(b.name, 'id');
@@ -198,6 +201,7 @@ const describeError = (e) => (e ? `${e.code || 'error'}: ${e.message || e}` : '-
 let editingId = null;   // id barang yang sedang diedit (null = tambah baru)
 
 function renderItems() {
+  updateHome();
   const query = $('#itemSearch').value;
   const rows = items.filter((i) => matches(i.name, query)).sort(byName);
   $('#itemList').replaceChildren(...rows.map(itemRow));
@@ -308,14 +312,21 @@ function addToCart(item) {
   renderCart();
 }
 
+
+
+function updateTotals() {
+  $('#cartTotal').textContent = rupiah(cartTotal());
+}
+
 function renderCart() {
   $('#cartList').replaceChildren(...cart.map(cartRow));
   $('#cartEmpty').hidden = cart.length > 0;
-  $('#cartTotal').textContent = rupiah(cartTotal());
+  updateTotals();
   $('#btnPrint').disabled = cart.length === 0;
   $('#btnClear').disabled = cart.length === 0;
 }
 
+// Satu baris di totalan: nama, harga (bisa diubah), jumlah (- / +), subtotal.
 function cartRow(c) {
   const subtotal = h('div', { class: 'subtotal' }, rupiah(c.price * c.qty));
 
@@ -328,7 +339,7 @@ function cartRow(c) {
       c.price = parsePrice(e.target.value);
       e.target.value = c.price;
       subtotal.textContent = rupiah(c.price * c.qty);
-      $('#cartTotal').textContent = rupiah(cartTotal());
+      updateTotals();
     },
   });
 
@@ -389,7 +400,9 @@ async function addManual(event) {
 function clearCart() {
   if (!confirm('Kosongkan totalan?')) return;
   cart = [];
-  $('#calcNote').value = '';
+  $('#calcCustomer').value = '';
+  $('#calcMotor').value = '';
+  $('#calcPlate').value = '';
   renderCart();
 }
 
@@ -407,31 +420,84 @@ function clearCart() {
 function applyPaper() {
   const size = store.get('paper', '58');
   // @page mengatur ukuran kertas. "auto" = tinggi mengikuti isi struk.
-  const css = size === 'A4'
-    ? '@page { size: A4; margin: 15mm; }'
+  const css = size === 'A4' ? '@page { size: A4; margin: 15mm; }'
+    : size === 'A5' ? '@page { size: A5; margin: 10mm; }'
     : `@page { size: ${size}mm auto; margin: 2mm; }`;
   $('#pageStyle').textContent = css;
   $('#printArea').dataset.paper = size;
 }
 
+const MIN_ROWS = 10;   // jumlah baris minimal di nota kertas A5/A4 (baris kosong seperti kertas)
+
+// Data kepala nota. Nama bengkel ikut Pengaturan (cloud); baris lainnya disimpan per HP.
+const SHOP_DEFAULT = { name: 'IMADA MOTOR', tag: 'SERVIS / ONDERDEL', addr: 'Jln. Tambakromo - Kayen', tel: '081 390 420 121' };
+
+function shopInfo() {
+  return {
+    name: settings.shopName || SHOP_DEFAULT.name,
+    tag: store.get('shopTag', SHOP_DEFAULT.tag),
+    addr: store.get('shopAddr', SHOP_DEFAULT.addr),
+    tel: store.get('shopTel', SHOP_DEFAULT.tel),
+  };
+}
+
+function applyNotaHead() {
+  const s = shopInfo();
+  $('#homeShop').textContent = s.name;
+  $('#drawerShop').textContent = s.name;
+  $('#homeTag').textContent = s.tag;
+  for (const [id, key] of [['#shopTag', 'shopTag'], ['#shopAddr', 'shopAddr'], ['#shopTel', 'shopTel']]) {
+    if (document.activeElement !== $(id)) $(id).value = store.get(key, '');
+  }
+}
+
+// Struk dibuat meniru nota kertas: kepala, empat kolom, lalu "Jumlah Rp.".
+// Kertas 58 mm terlalu sempit untuk tabel, jadi memakai susunan dua baris per barang.
 function buildReceipt(r) {
-  const shop = settings.shopName || 'Bengkel';
-  const parts = [
-    h('div', { class: 'r-head' }, h('strong', {}, shop), h('div', {}, fmtDate(r.createdAt))),
-    r.note ? h('div', { class: 'r-note' }, r.note) : null,
-    h('hr'),
-    ...r.lines.map((l) =>
-      h('div', { class: 'r-row' },
+  const paper = store.get('paper', '58');
+  const narrow = paper === '58';
+  const s = shopInfo();
+
+  const who = [['Pelanggan', r.customer], ['Motor', r.motor], ['Plat', r.plate]];
+  const legacy = r.customer == null && r.motor == null && r.plate == null ? r.note : '';
+  const toLines = who
+    .filter(([, v]) => !narrow || v)
+    .map(([k, v]) => h('div', { class: 'pn-line' }, v ? `${k}: ${v}` : ''));
+  toLines.push(h('div', { class: 'pn-line pn-date' }, fmtDate(r.createdAt)));
+
+  const head = h('div', { class: 'pn-head' },
+    h('div', { class: 'pn-brand' },
+      h('div', { class: 'pn-shop' }, s.name),
+      h('div', { class: 'pn-tag' }, s.tag),
+      h('div', { class: 'pn-addr' }, s.addr),
+      h('div', { class: 'pn-tel' }, s.tel)),
+    h('div', { class: 'pn-to' }, toLines));
+
+  const parts = [head];
+  if (legacy) parts.push(h('div', { class: 'pn-note' }, 'Catatan: ' + legacy));
+
+  if (narrow) {
+    parts.push(h('div', { class: 'pn-rule' }));
+    for (const l of r.lines) {
+      parts.push(h('div', { class: 'r-row' },
         h('div', { class: 'r-name' }, l.name),
         h('div', { class: 'r-line' },
-          h('span', {}, `${l.qty} x ${rupiah(l.price)}`),
-          h('span', {}, rupiah(l.price * l.qty))))),
-    h('hr'),
-    h('div', { class: 'r-total' }, h('span', {}, 'TOTAL'), h('strong', {}, rupiah(r.total))),
-    h('div', { class: 'r-foot' }, 'Terima kasih'),
-  ].filter(Boolean);
+          h('span', {}, `${l.qty} x ${numFmt(l.price)}`),
+          h('span', {}, numFmt(l.price * l.qty)))));
+    }
+  } else {
+    const cells = (a, b, c, d, cls = '') => h('div', { class: 'pn-row ' + cls },
+      h('div', { class: 'c' }, a), h('div', { class: 'nm' }, b), h('div', { class: 'rt' }, c), h('div', { class: 'rt b' }, d));
+    const rows = r.lines.map((l) => cells(l.qty, l.name, numFmt(l.price), numFmt(l.price * l.qty)));
+    if (paper === 'A4' || paper === 'A5') while (rows.length < MIN_ROWS) rows.push(cells('', '', '', '', 'blank'));
+    parts.push(h('div', { class: 'pn-table' },
+      h('div', { class: 'pn-th' }, h('div', {}, 'BANYAKNYA'), h('div', {}, 'NAMA BARANG'), h('div', {}, 'HARGA'), h('div', {}, 'JUMLAH')),
+      rows));
+  }
 
-  $('#printArea').replaceChildren(...parts);
+  parts.push(h('div', { class: 'pn-sum' }, h('span', {}, 'Jumlah Rp.'), h('strong', {}, numFmt(r.total))));
+
+  $('#printArea').replaceChildren(h('div', { class: 'pn ' + (narrow ? 'pn-58' : 'pn-wide') }, parts));
 }
 
 function printNow(receipt) {
@@ -442,9 +508,15 @@ function printNow(receipt) {
 
 async function printCart() {
   if (cart.length === 0) return;
+  const customer = $('#calcCustomer').value.trim();
+  const motor = $('#calcMotor').value.trim();
+  const plate = $('#calcPlate').value.trim();
   const receipt = {
     createdAt: Date.now(),
-    note: $('#calcNote').value.trim(),
+    customer,
+    motor,
+    plate,
+    note: [customer, motor, plate].filter(Boolean).join(' · '),   // ringkasan untuk riwayat
     total: cartTotal(),
     lines: cart.map(({ name, price, qty }) => ({ name, price, qty })),
   };
@@ -464,6 +536,7 @@ async function printCart() {
 let viewingReceipt = null;
 
 function renderHistory() {
+  updateHome();
   const rows = receipts.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_HISTORY);
   $('#historyList').replaceChildren(...rows.map(historyRow));
   $('#historyEmpty').hidden = rows.length > 0;
@@ -496,7 +569,10 @@ function openReceipt(r) {
 function reuseReceipt() {
   if (!viewingReceipt) return;
   cart = viewingReceipt.lines.map((l) => ({ key: 'h' + Date.now() + Math.random(), ...l }));
-  $('#calcNote').value = viewingReceipt.note || '';
+  const legacy = viewingReceipt.customer == null && viewingReceipt.motor == null && viewingReceipt.plate == null;
+  $('#calcCustomer').value = legacy ? (viewingReceipt.note || '') : (viewingReceipt.customer || '');
+  $('#calcMotor').value = viewingReceipt.motor || '';
+  $('#calcPlate').value = viewingReceipt.plate || '';
   renderCart();
   $('#receiptDialog').close();
   showTab('calc');
@@ -661,14 +737,43 @@ function loadFont() {
 function applySettingsToUI() {
   const shop = settings.shopName || '';
   if (document.activeElement !== $('#shopName')) $('#shopName').value = shop;
-  $('#appTitle').textContent = shop || 'Daftar Harga';
+  applyNotaHead();
 }
+
+const TAB_TITLES = { home: 'Beranda', calc: 'Buat Nota', items: 'Daftar Harga', history: 'Riwayat Nota', settings: 'Pengaturan' };
 
 function showTab(name) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
-  $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  $$('.drawer [data-tab]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tab === name);
+    if (b.dataset.tab === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  $('#appTitle').textContent = TAB_TITLES[name] || '';
+  closeDrawer();
   window.scrollTo(0, 0);
   if (name === 'settings') renderDiag();
+}
+
+// Menu samping: dibuka dengan tombol tiga garis, ditutup dengan ketuk di luar menu, Esc, atau memilih menu.
+function openDrawer() {
+  $('#drawer').classList.add('open');
+  $('#drawer').setAttribute('aria-hidden', 'false');
+  $('#scrim').hidden = false;
+  $('#menuBtn').setAttribute('aria-expanded', 'true');
+  $('#drawer [data-tab].active').focus();
+}
+
+function closeDrawer() {
+  $('#drawer').classList.remove('open');
+  $('#drawer').setAttribute('aria-hidden', 'true');
+  $('#scrim').hidden = true;
+  $('#menuBtn').setAttribute('aria-expanded', 'false');
+}
+
+// Ringkasan di Beranda
+function updateHome() {
+  $('#homeItemCount').textContent = itemsLoaded ? `${items.length} barang` : 'Memuat…';
+  $('#homeReceiptCount').textContent = receipts.length ? `${receipts.length} nota tersimpan` : 'Belum ada nota';
 }
 
 // Panel Diagnosa: menampilkan versi file yang BENAR-BENAR berjalan dan keadaan cloud.
@@ -724,7 +829,11 @@ function bindEvents() {
   $('#fontUp').addEventListener('click', () => changeFont(1));
 
   // Tab
-  $$('.tabbar button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  $$('.drawer [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  $$('[data-go]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.go)));
+  $('#menuBtn').addEventListener('click', () => ($('#drawer').classList.contains('open') ? closeDrawer() : openDrawer()));
+  $('#scrim').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
   $('#bannerGo').addEventListener('click', () => showTab('settings'));
 
   // Daftar barang
@@ -750,12 +859,19 @@ function bindEvents() {
 
   // Pengaturan. Judul diperbarui saat mengetik, disimpan saat selesai (change).
   $('#shopName').addEventListener('input', (e) => {
-    $('#appTitle').textContent = e.target.value.trim() || 'Daftar Harga';
+    const name = e.target.value.trim() || SHOP_DEFAULT.name;
+    for (const id of ['#homeShop', '#drawerShop']) $(id).textContent = name;
   });
   $('#shopName').addEventListener('change', (e) => {
     settings.shopName = e.target.value.trim();
     data.saveSettings({ shopName: settings.shopName });
   });
+  for (const [id, key] of [['#shopTag', 'shopTag'], ['#shopAddr', 'shopAddr'], ['#shopTel', 'shopTel']]) {
+    $(id).addEventListener('change', (e) => {
+      store.set(key, e.target.value.trim());
+      applyNotaHead();
+    });
+  }
   $('#paperSize').addEventListener('change', (e) => {
     store.set('paper', e.target.value);
     applyPaper();

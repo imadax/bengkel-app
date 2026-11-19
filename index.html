@@ -9,15 +9,29 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Daftar Harga Bengkel</title>
-  <link rel="stylesheet" href="style.css?v=3.1.0">
+  <link rel="stylesheet" href="style.css?v=3.4.0">
   <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
   <style id="pageStyle"></style>
 </head>
 <body>
 
+  <!-- Ikon (dipakai lewat <use>) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12.5V4a1 1 0 0 1 1-1h8.5L21 11.5 11.5 21z"/><path d="M8 8h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><path d="M15 5v4M9 15v4"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  </svg>
+
   <header class="appbar">
+    <button id="menuBtn" class="menu-btn" type="button" aria-label="Buka menu" aria-expanded="false" aria-controls="drawer">
+      <svg class="ic"><use href="#i-menu"/></svg>
+    </button>
     <div class="grow">
-      <h1 id="appTitle">Daftar Harga</h1>
+      <h1 id="appTitle">Beranda</h1>
       <div id="syncState" class="sync" hidden></div>
     </div>
     <div class="fontctl" role="group" aria-label="Ukuran tulisan">
@@ -25,6 +39,20 @@
       <button id="fontUp" type="button" aria-label="Besarkan tulisan">A+</button>
     </div>
   </header>
+
+  <!-- ===== MENU SAMPING ===== -->
+  <div id="scrim" class="scrim" hidden></div>
+  <nav id="drawer" class="drawer" aria-label="Menu utama" aria-hidden="true">
+    <div class="drawer-head">
+      <div id="drawerShop" class="drawer-brand">IMADA MOTOR</div>
+      <div class="drawer-sub">Nota &amp; daftar harga</div>
+    </div>
+    <button type="button" data-tab="home" class="active"><svg class="ic"><use href="#i-home"/></svg>Beranda</button>
+    <button type="button" data-tab="calc"><svg class="ic"><use href="#i-receipt"/></svg>Buat Nota</button>
+    <button type="button" data-tab="items"><svg class="ic"><use href="#i-tag"/></svg>Daftar Harga</button>
+    <button type="button" data-tab="history"><svg class="ic"><use href="#i-clock"/></svg>Riwayat Nota</button>
+    <button type="button" data-tab="settings"><svg class="ic"><use href="#i-sliders"/></svg>Pengaturan</button>
+  </nav>
 
   <!-- ===== LAYAR LOGIN (hanya mode cloud) ===== -->
   <section id="loginScreen" class="login" hidden>
@@ -45,8 +73,41 @@
 
   <main>
 
-    <!-- ===== TAB 1: DAFTAR HARGA ===== -->
-    <section id="tab-items" class="tab active">
+    <!-- ===== BERANDA ===== -->
+    <section id="tab-home" class="tab active">
+      <div class="home-hero">
+        <p class="eyebrow">Selamat datang</p>
+        <h2 id="homeShop">IMADA MOTOR</h2>
+        <p id="homeTag" class="muted">SERVIS / ONDERDEL</p>
+      </div>
+
+      <button type="button" class="home-primary" data-go="calc">
+        <span class="home-icon"><svg class="ic"><use href="#i-receipt"/></svg></span>
+        <span class="grow"><strong>Buat Nota</strong><small>Pilih barang, isi pelanggan, lalu cetak</small></span>
+        <svg class="ic"><use href="#i-chevron"/></svg>
+      </button>
+
+      <div class="home-list">
+        <button type="button" data-go="items">
+          <svg class="ic"><use href="#i-tag"/></svg>
+          <span class="grow"><strong>Daftar Harga</strong><small id="homeItemCount">&nbsp;</small></span>
+          <svg class="ic chev"><use href="#i-chevron"/></svg>
+        </button>
+        <button type="button" data-go="history">
+          <svg class="ic"><use href="#i-clock"/></svg>
+          <span class="grow"><strong>Riwayat Nota</strong><small id="homeReceiptCount">&nbsp;</small></span>
+          <svg class="ic chev"><use href="#i-chevron"/></svg>
+        </button>
+        <button type="button" data-go="settings">
+          <svg class="ic"><use href="#i-sliders"/></svg>
+          <span class="grow"><strong>Pengaturan</strong><small>Nama bengkel, kertas, cadangan</small></span>
+          <svg class="ic chev"><use href="#i-chevron"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== DAFTAR HARGA ===== -->
+    <section id="tab-items" class="tab">
       <div class="toolbar">
         <input id="itemSearch" type="search" placeholder="Cari barang..." autocomplete="off">
         <button id="btnAddItem" class="btn primary" type="button">+ Barang</button>
@@ -55,7 +116,7 @@
       <ul id="itemList" class="list"></ul>
     </section>
 
-    <!-- ===== TAB 2: TOTALAN ===== -->
+    <!-- ===== BUAT NOTA ===== -->
     <section id="tab-calc" class="tab">
       <div class="toolbar">
         <input id="calcSearch" type="search" placeholder="Cari barang untuk ditambah..." autocomplete="off">
@@ -63,7 +124,22 @@
       </div>
       <ul id="calcResults" class="list results" hidden></ul>
 
-      <input id="calcNote" class="note" type="text" placeholder="Catatan (mis. plat motor, nama pelanggan)" autocomplete="off">
+      <div class="card cust">
+        <div class="field">
+          <label for="calcCustomer">Nama pelanggan</label>
+          <input id="calcCustomer" type="text" autocomplete="off">
+        </div>
+        <div class="row">
+          <div class="field grow">
+            <label for="calcMotor">Jenis motor</label>
+            <input id="calcMotor" type="text" autocomplete="off">
+          </div>
+          <div class="field grow">
+            <label for="calcPlate">Plat / catatan</label>
+            <input id="calcPlate" type="text" autocomplete="off">
+          </div>
+        </div>
+      </div>
 
       <ul id="cartList" class="list"></ul>
       <p id="cartEmpty" class="muted">Belum ada barang. Cari di atas lalu ketuk barangnya.</p>
@@ -72,19 +148,19 @@
         <div class="total-line"><span>Total</span><strong id="cartTotal">Rp 0</strong></div>
         <div class="row">
           <button id="btnClear" class="btn" type="button">Kosongkan</button>
-          <button id="btnPrint" class="btn primary grow" type="button">Cetak / Simpan PDF</button>
+          <button id="btnPrint" class="btn primary grow" type="button">Cetak / PDF</button>
         </div>
       </div>
     </section>
 
-    <!-- ===== TAB 3: RIWAYAT NOTA ===== -->
+    <!-- ===== RIWAYAT NOTA ===== -->
     <section id="tab-history" class="tab">
       <p class="muted">Nota yang pernah dicetak. Ketuk untuk melihat, mencetak ulang, atau menyalin ke totalan.</p>
       <ul id="historyList" class="list"></ul>
       <p id="historyEmpty" class="muted">Belum ada nota yang dicetak.</p>
     </section>
 
-    <!-- ===== TAB 4: PENGATURAN ===== -->
+    <!-- ===== PENGATURAN ===== -->
     <section id="tab-settings" class="tab">
 
       <!-- Mode cloud -->
@@ -107,15 +183,28 @@
 
         <h2>Struk</h2>
         <div class="field">
-          <label for="shopName">Nama bengkel (tampil di struk)</label>
-          <input id="shopName" type="text" autocomplete="off">
+          <label for="shopName">Nama bengkel (tampil di nota)</label>
+          <input id="shopName" type="text" autocomplete="off" placeholder="IMADA MOTOR">
         </div>
         <div class="field">
-          <label for="paperSize">Ukuran kertas cetak (khusus HP ini)</label>
+          <label for="shopTag">Keterangan usaha (di bawah nama)</label>
+          <input id="shopTag" type="text" autocomplete="off" placeholder="SERVIS / ONDERDEL">
+        </div>
+        <div class="field">
+          <label for="shopAddr">Alamat</label>
+          <input id="shopAddr" type="text" autocomplete="off" placeholder="Jln. Tambakromo - Kayen">
+        </div>
+        <div class="field">
+          <label for="shopTel">Nomor HP</label>
+          <input id="shopTel" type="text" autocomplete="off" placeholder="081 390 420 121">
+        </div>
+        <div class="field">
+          <label for="paperSize">Format cetak (khusus HP ini)</label>
           <select id="paperSize">
-            <option value="58">Printer kecil 58 mm</option>
-            <option value="80">Printer kecil 80 mm</option>
-            <option value="A4">Kertas A4</option>
+            <option value="58">Printer thermal 58 mm</option>
+            <option value="80">Printer thermal 80 mm</option>
+            <option value="A5">Nota kertas A5 (mirip nota asli)</option>
+            <option value="A4">Nota kertas A4</option>
           </select>
         </div>
 
@@ -146,13 +235,6 @@
     </section>
 
   </main>
-
-  <nav class="tabbar" aria-label="Menu utama">
-    <button type="button" data-tab="items" class="active">Daftar Harga</button>
-    <button type="button" data-tab="calc">Totalan</button>
-    <button type="button" data-tab="history">Riwayat</button>
-    <button type="button" data-tab="settings">Pengaturan</button>
-  </nav>
 
   <!-- ===== DIALOG: TAMBAH / EDIT BARANG ===== -->
   <dialog id="itemDialog">
@@ -222,6 +304,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3.1.0"></script>
+  <script src="app.js?v=3.4.0"></script>
 </body>
 </html>

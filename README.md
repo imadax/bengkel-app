@@ -13,7 +13,7 @@ Dua mode penyimpanan, dipilih otomatis:
 
 - Daftar harga: tambah, edit, hapus, cari (semua kata yang diketik harus cocok, mis. "oli 0.8"). Ketuk satu barang untuk mengedit.
 - Totalan: cari lalu ketuk barang, atur jumlah, ubah harga untuk transaksi itu saja, atau tambah barang manual.
-- Cetak: layout struk untuk printer kecil 58/80 mm atau A4, bisa disimpan jadi PDF.
+- Totalan dan cetak meniru nota kertas (kolom Banyaknya, Nama Barang, Harga, Jumlah) dengan isian pelanggan, jenis motor, dan plat. Cetak untuk printer kecil 58/80 mm atau A4, bisa disimpan jadi PDF.
 - Riwayat nota: setiap nota yang dicetak tersimpan. Bisa dilihat, dicetak ulang, disalin ke totalan, atau dihapus.
 - Ramah mata: tombol A- / A+ (6 tingkat ukuran), kontras tinggi, tombol besar.
 - Cloud: data otomatis tersimpan, bisa dipakai offline, status sinkron di bar atas.
@@ -23,7 +23,7 @@ Dua mode penyimpanan, dipilih otomatis:
 
 | File | Fungsi |
 |---|---|
-| `index.html` | Kerangka halaman: layar login, empat tab, dialog, area struk |
+| `index.html` | Kerangka halaman: layar login, Beranda, menu samping, halaman, dialog, area struk |
 | `style.css` | Tampilan (mobile-first, satuan rem) dan aturan cetak `@media print` |
 | `app.js` | Logika aplikasi (9 bagian, lihat daftar isi di atas file) |
 | `cloud.js` | Penyimpanan cloud (Firebase Auth + Firestore), dimuat hanya di mode cloud |
@@ -74,7 +74,7 @@ Coba: Pengaturan, Pengaturan lainnya, Masukkan data dari file cadangan, pilih `c
 2. Buka `http://localhost:8000`, tekan **F12**, tab **Application**, **Service workers**, klik **Unregister**.
 3. Tab **Application**, **Storage**, klik **Clear site data**.
 4. Tab **Network**, centang **Disable cache** (selama DevTools terbuka), lalu tekan **Ctrl+Shift+R**.
-5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.1.0). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
+5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.4.0). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
 
 **Saat mengubah kode sendiri**, naikkan nomor versi di 3 tempat supaya semua browser pasti mengambil file baru: `VERSION` di `sw.js`, `APP_VERSION` di `app.js`, dan `?v=` di `index.html` (dua tempat) serta `--css-version` di `style.css`.
 
