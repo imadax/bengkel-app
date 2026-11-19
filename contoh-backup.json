@@ -1,0 +1,19 @@
+{
+  "app": "harga-bengkel",
+  "version": 1,
+  "shopName": "Bengkel Contoh",
+  "items": [
+    { "name": "Oli Mesin 0.8L", "price": 45000 },
+    { "name": "Oli Mesin 1L", "price": 55000 },
+    { "name": "Oli Gardan", "price": 15000 },
+    { "name": "Busi", "price": 25000 },
+    { "name": "Kampas Rem Depan", "price": 55000 },
+    { "name": "Kampas Rem Belakang", "price": 50000 },
+    { "name": "Rantai Set", "price": 180000 },
+    { "name": "Filter Udara", "price": 40000 },
+    { "name": "Ban Dalam", "price": 45000 },
+    { "name": "Ban Luar 80/90-14", "price": 220000 },
+    { "name": "Jasa Ganti Oli", "price": 10000 },
+    { "name": "Jasa Servis Ringan", "price": 50000 }
+  ]
+}

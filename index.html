@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b4f9c">
+  <meta name="description" content="Daftar harga dan totalan untuk bengkel">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>Daftar Harga Bengkel</title>
+  <link rel="stylesheet" href="style.css?v=3.1.0">
+  <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
+  <style id="pageStyle"></style>
+</head>
+<body>
+
+  <header class="appbar">
+    <div class="grow">
+      <h1 id="appTitle">Daftar Harga</h1>
+      <div id="syncState" class="sync" hidden></div>
+    </div>
+    <div class="fontctl" role="group" aria-label="Ukuran tulisan">
+      <button id="fontDown" type="button" aria-label="Kecilkan tulisan">A−</button>
+      <button id="fontUp" type="button" aria-label="Besarkan tulisan">A+</button>
+    </div>
+  </header>
+
+  <!-- ===== LAYAR LOGIN (hanya mode cloud) ===== -->
+  <section id="loginScreen" class="login" hidden>
+    <h2>Selamat datang</h2>
+    <p>Masuk dengan akun Google supaya daftar harga tersimpan aman di internet dan bisa dibuka dari HP mana pun.</p>
+    <button id="btnLogin" class="btn primary big" type="button" disabled>Masuk dengan Google</button>
+    <p id="loginMsg" class="muted">Memuat…</p>
+  </section>
+
+  <div id="dbError" class="banner danger" hidden>
+    <span id="dbErrorText">Penyimpanan tidak tersedia di browser ini. Data tidak akan tersimpan.</span>
+  </div>
+
+  <div id="backupBanner" class="banner" hidden>
+    <span>Sudah lama belum simpan cadangan. Supaya data aman kalau HP rusak.</span>
+    <button id="bannerGo" class="btn small" type="button">Simpan</button>
+  </div>
+
+  <main>
+
+    <!-- ===== TAB 1: DAFTAR HARGA ===== -->
+    <section id="tab-items" class="tab active">
+      <div class="toolbar">
+        <input id="itemSearch" type="search" placeholder="Cari barang..." autocomplete="off">
+        <button id="btnAddItem" class="btn primary" type="button">+ Barang</button>
+      </div>
+      <p id="itemCount" class="muted"></p>
+      <ul id="itemList" class="list"></ul>
+    </section>
+
+    <!-- ===== TAB 2: TOTALAN ===== -->
+    <section id="tab-calc" class="tab">
+      <div class="toolbar">
+        <input id="calcSearch" type="search" placeholder="Cari barang untuk ditambah..." autocomplete="off">
+        <button id="btnManual" class="btn" type="button">Manual</button>
+      </div>
+      <ul id="calcResults" class="list results" hidden></ul>
+
+      <input id="calcNote" class="note" type="text" placeholder="Catatan (mis. plat motor, nama pelanggan)" autocomplete="off">
+
+      <ul id="cartList" class="list"></ul>
+      <p id="cartEmpty" class="muted">Belum ada barang. Cari di atas lalu ketuk barangnya.</p>
+
+      <div class="totalbar">
+        <div class="total-line"><span>Total</span><strong id="cartTotal">Rp 0</strong></div>
+        <div class="row">
+          <button id="btnClear" class="btn" type="button">Kosongkan</button>
+          <button id="btnPrint" class="btn primary grow" type="button">Cetak / Simpan PDF</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== TAB 3: RIWAYAT NOTA ===== -->
+    <section id="tab-history" class="tab">
+      <p class="muted">Nota yang pernah dicetak. Ketuk untuk melihat, mencetak ulang, atau menyalin ke totalan.</p>
+      <ul id="historyList" class="list"></ul>
+      <p id="historyEmpty" class="muted">Belum ada nota yang dicetak.</p>
+    </section>
+
+    <!-- ===== TAB 4: PENGATURAN ===== -->
+    <section id="tab-settings" class="tab">
+
+      <!-- Mode cloud -->
+      <div class="card cloud-only">
+        <h2>Data tersimpan di cloud</h2>
+        <p class="muted">Tidak perlu simpan cadangan manual. Semua perubahan otomatis tersimpan di internet.</p>
+        <p>Akun: <strong id="accountName">-</strong></p>
+      </div>
+
+      <!-- Mode lokal -->
+      <div class="card local-only">
+        <h2>Simpan cadangan</h2>
+        <p class="muted">Terakhir disimpan: <strong id="lastBackup">-</strong></p>
+        <button id="btnDownload" class="btn primary big" type="button" style="width:100%">Simpan cadangan sekarang</button>
+        <p class="muted small">File masuk ke folder Download di HP. Kalau disimpan lagi, file baru ditambahkan (tidak menimpa), jadi pakai yang tanggalnya paling baru.</p>
+      </div>
+
+      <details class="card">
+        <summary>Pengaturan lainnya</summary>
+
+        <h2>Struk</h2>
+        <div class="field">
+          <label for="shopName">Nama bengkel (tampil di struk)</label>
+          <input id="shopName" type="text" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="paperSize">Ukuran kertas cetak (khusus HP ini)</label>
+          <select id="paperSize">
+            <option value="58">Printer kecil 58 mm</option>
+            <option value="80">Printer kecil 80 mm</option>
+            <option value="A4">Kertas A4</option>
+          </select>
+        </div>
+
+        <h2>Data</h2>
+        <div class="stack">
+          <label class="btn" for="importFile">Masukkan data dari file cadangan</label>
+          <input id="importFile" type="file" accept=".json,application/json" hidden>
+          <button id="btnDownload2" class="btn cloud-only" type="button">Unduh salinan data (file)</button>
+          <button id="btnShare" class="btn local-only" type="button">Kirim cadangan ke WhatsApp / Drive</button>
+        </div>
+        <p class="muted small">Memasukkan data menggabungkan isi file dengan data yang ada. Barang dengan nama sama diperbarui harganya, barang baru ditambahkan.</p>
+
+        <div class="cloud-only">
+          <h2>Akun</h2>
+          <button id="btnLogout" class="btn danger" type="button">Keluar dari akun</button>
+        </div>
+
+        <h2>Diagnosa</h2>
+        <p class="muted small">Kalau ada yang tidak berfungsi, ketuk "Salin info diagnosa" lalu kirim hasilnya.</p>
+        <pre id="diagText" class="diag"></pre>
+        <div class="stack">
+          <button id="btnDiagTest" class="btn cloud-only" type="button">Tes sambungan cloud</button>
+          <button id="btnDiagCopy" class="btn" type="button">Salin info diagnosa</button>
+        </div>
+
+        <p class="muted small">Versi <span id="appVersion"></span> · Mode: <span id="modeInfo">-</span> · Penyimpanan permanen: <span id="persistInfo">-</span></p>
+      </details>
+    </section>
+
+  </main>
+
+  <nav class="tabbar" aria-label="Menu utama">
+    <button type="button" data-tab="items" class="active">Daftar Harga</button>
+    <button type="button" data-tab="calc">Totalan</button>
+    <button type="button" data-tab="history">Riwayat</button>
+    <button type="button" data-tab="settings">Pengaturan</button>
+  </nav>
+
+  <!-- ===== DIALOG: TAMBAH / EDIT BARANG ===== -->
+  <dialog id="itemDialog">
+    <form id="itemForm" autocomplete="off">
+      <h2 id="itemDialogTitle">Tambah barang</h2>
+      <div class="field">
+        <label for="itemName">Nama barang</label>
+        <input id="itemName" type="text" required>
+      </div>
+      <div class="field">
+        <label for="itemPrice">Harga (Rp)</label>
+        <input id="itemPrice" type="text" inputmode="numeric" required>
+      </div>
+      <div class="actions">
+        <button type="button" id="btnDeleteItem" class="btn danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Batal</button>
+        <button type="submit" class="btn primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== DIALOG: BARANG MANUAL DI TOTALAN ===== -->
+  <dialog id="manualDialog">
+    <form id="manualForm" autocomplete="off">
+      <h2>Tambah manual</h2>
+      <div class="field">
+        <label for="manualName">Nama barang / jasa</label>
+        <input id="manualName" type="text" required>
+      </div>
+      <div class="field">
+        <label for="manualPrice">Harga satuan (Rp)</label>
+        <input id="manualPrice" type="text" inputmode="numeric" required>
+      </div>
+      <div class="field">
+        <label for="manualQty">Jumlah</label>
+        <input id="manualQty" type="text" inputmode="numeric" value="1" required>
+      </div>
+      <label class="check"><input id="manualSave" type="checkbox"> Simpan juga ke daftar barang</label>
+      <div class="actions">
+        <button type="button" class="btn" data-close>Batal</button>
+        <button type="submit" class="btn primary">Tambahkan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== DIALOG: DETAIL NOTA DI RIWAYAT ===== -->
+  <dialog id="receiptDialog">
+    <h2 id="receiptTitle">Nota</h2>
+    <p id="receiptNote" class="muted" hidden></p>
+    <ul id="receiptLines" class="list lines"></ul>
+    <div class="total-line"><span>Total</span><strong id="receiptTotal">Rp 0</strong></div>
+    <div class="actions">
+      <button type="button" id="btnReprint" class="btn primary grow">Cetak ulang</button>
+      <button type="button" id="btnReuse" class="btn grow">Salin ke totalan</button>
+    </div>
+    <div class="actions">
+      <button type="button" id="btnDeleteReceipt" class="btn danger">Hapus</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Tutup</button>
+    </div>
+  </dialog>
+
+  <!-- Area struk: disembunyikan di layar, hanya tampil saat dicetak -->
+  <div id="printArea" data-paper="58"></div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="firebase-config.js"></script>
+  <script src="app.js?v=3.1.0"></script>
+</body>
+</html>
