@@ -5,7 +5,7 @@
  */
 
 :root {
-  --css-version: '3.4.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
+  --css-version: '3.5.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #18202c;
@@ -209,10 +209,31 @@ input[type="checkbox"] { width: 1.3rem; height: 1.3rem; min-height: 0; }
 .total-line { display: flex; justify-content: space-between; align-items: baseline; }
 .total-line strong { font-size: 1.3rem; font-weight: 750; }
 
-/* ---------- Isian pelanggan & baris totalan ---------- */
-.cust { margin-bottom: .6rem; }
-.cust .field:last-child, .cust .row .field { margin-bottom: 0; }
-.cust > .field { margin-bottom: .6rem; }
+/* ---------- Isian pelanggan (bisa dilipat), ongkos & baris totalan ---------- */
+details.card.cust { margin-bottom: .6rem; padding: 0 .9rem; }
+details.card.cust summary {
+  list-style: none; cursor: pointer; min-height: 3rem;
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: .4rem 1.6rem .4rem 0;
+  position: relative; font-weight: 650;
+}
+details.card.cust summary::-webkit-details-marker { display: none; }
+details.card.cust summary::after {
+  content: ""; position: absolute; right: .25rem; top: 50%;
+  width: .55rem; height: .55rem; margin-top: -.45rem;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg); transition: transform .15s;
+}
+details.card.cust[open] summary::after { transform: rotate(-135deg); margin-top: -.1rem; }
+.cust-summary { font-weight: 400; }
+.cust-summary:empty { display: none; }
+details.card.cust[open] .cust-summary { display: none; }
+details.card.cust[open] { padding-bottom: .5rem; }
+details.card.cust .field { margin-bottom: .6rem; }
+details.card.cust .row .field { margin-bottom: .6rem; }
+
+.labor { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .9rem; margin: .6rem 0 0; }
+.labor label { font-weight: 650; }
+.labor input { width: 9.5rem; text-align: right; }
 
 .cart-top { display: flex; align-items: flex-start; gap: .5rem; justify-content: space-between; }
 .cart-bottom { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
@@ -295,6 +316,7 @@ body.locked main, body.locked .menu-btn, body.locked .drawer, body.locked .scrim
 .item-btn .grow { min-width: 0; }
 .lines > li { padding: .4rem .6rem; }
 .line-row { display: flex; justify-content: space-between; gap: .5rem; }
+.line-row strong { white-space: nowrap; }
 .line-row .qty-price { color: var(--muted); font-size: .85rem; }
 
 /* ---------- Struk (hanya tampil saat cetak) ---------- */

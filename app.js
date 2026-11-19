@@ -1,5 +1,5 @@
 /*
- * Harga Bengkel - aplikasi web (PWA) sederhana.
+ * Imada Motor - aplikasi web (PWA) sederhana.
  * Tanpa framework dan tanpa build tool: HTML + CSS + JavaScript biasa.
  *
  * Daftar isi file ini:
@@ -24,7 +24,7 @@
  */
 'use strict';
 
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '3.5.0';
 const DB_NAME = 'harga-bengkel';
 const BACKUP_REMINDER_DAYS = 7;
 const MAX_HISTORY = 100;
@@ -270,7 +270,8 @@ async function removeItem() {
 
 let cart = [];
 
-const cartTotal = () => cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+const laborAmount = () => parsePrice($('#calcLabor').value) || 0;   // ongkos jasa (boleh kosong)
+const cartTotal = () => cart.reduce((sum, c) => sum + c.price * c.qty, 0) + laborAmount();
 
 // Hasil pencarian di atas keranjang
 function renderCalcResults() {
@@ -316,14 +317,21 @@ function addToCart(item) {
 
 function updateTotals() {
   $('#cartTotal').textContent = rupiah(cartTotal());
+  const any = cart.length > 0 || laborAmount() > 0;   // nota hanya ongkos juga boleh
+  $('#btnPrint').disabled = !any;
+  $('#btnClear').disabled = !any;
+}
+
+// Ringkasan data pelanggan yang tampil saat kotaknya dilipat
+function updateCustSummary() {
+  const v = ['#calcCustomer', '#calcMotor', '#calcPlate'].map((id) => $(id).value.trim()).filter(Boolean);
+  $('#custSummary').textContent = v.join(' · ');
 }
 
 function renderCart() {
   $('#cartList').replaceChildren(...cart.map(cartRow));
   $('#cartEmpty').hidden = cart.length > 0;
   updateTotals();
-  $('#btnPrint').disabled = cart.length === 0;
-  $('#btnClear').disabled = cart.length === 0;
 }
 
 // Satu baris di totalan: nama, harga (bisa diubah), jumlah (- / +), subtotal.
@@ -403,6 +411,8 @@ function clearCart() {
   $('#calcCustomer').value = '';
   $('#calcMotor').value = '';
   $('#calcPlate').value = '';
+  $('#calcLabor').value = '';
+  updateCustSummary();
   renderCart();
 }
 
@@ -446,6 +456,13 @@ function applyNotaHead() {
   $('#homeShop').textContent = s.name;
   $('#drawerShop').textContent = s.name;
   $('#homeTag').textContent = s.tag;
+  for (const id of ['#calcCustomer', '#calcMotor', '#calcPlate']) $(id).addEventListener('input', updateCustSummary);
+  $('#calcLabor').addEventListener('input', updateTotals);
+  $('#calcLabor').addEventListener('change', (e) => {
+    const v = parsePrice(e.target.value);
+    e.target.value = v > 0 ? numFmt(v) : '';
+    updateTotals();
+  });
   for (const [id, key] of [['#shopTag', 'shopTag'], ['#shopAddr', 'shopAddr'], ['#shopTel', 'shopTel']]) {
     if (document.activeElement !== $(id)) $(id).value = store.get(key, '');
   }
@@ -485,10 +502,16 @@ function buildReceipt(r) {
           h('span', {}, `${l.qty} x ${numFmt(l.price)}`),
           h('span', {}, numFmt(l.price * l.qty)))));
     }
+    if (r.labor > 0) {
+      parts.push(h('div', { class: 'r-row' },
+        h('div', { class: 'r-name' }, 'Ongkos'),
+        h('div', { class: 'r-line' }, h('span', {}, ''), h('span', {}, numFmt(r.labor)))));
+    }
   } else {
     const cells = (a, b, c, d, cls = '') => h('div', { class: 'pn-row ' + cls },
       h('div', { class: 'c' }, a), h('div', { class: 'nm' }, b), h('div', { class: 'rt' }, c), h('div', { class: 'rt b' }, d));
     const rows = r.lines.map((l) => cells(l.qty, l.name, numFmt(l.price), numFmt(l.price * l.qty)));
+    if (r.labor > 0) rows.push(cells('', 'Ongkos', numFmt(r.labor), numFmt(r.labor)));   // banyaknya dikosongkan
     if (paper === 'A4' || paper === 'A5') while (rows.length < MIN_ROWS) rows.push(cells('', '', '', '', 'blank'));
     parts.push(h('div', { class: 'pn-table' },
       h('div', { class: 'pn-th' }, h('div', {}, 'BANYAKNYA'), h('div', {}, 'NAMA BARANG'), h('div', {}, 'HARGA'), h('div', {}, 'JUMLAH')),
@@ -507,7 +530,7 @@ function printNow(receipt) {
 }
 
 async function printCart() {
-  if (cart.length === 0) return;
+  if (cart.length === 0 && laborAmount() === 0) return;
   const customer = $('#calcCustomer').value.trim();
   const motor = $('#calcMotor').value.trim();
   const plate = $('#calcPlate').value.trim();
@@ -517,6 +540,7 @@ async function printCart() {
     motor,
     plate,
     note: [customer, motor, plate].filter(Boolean).join(' · '),   // ringkasan untuk riwayat
+    labor: laborAmount(),   // ongkos jasa; sudah termasuk di total
     total: cartTotal(),
     lines: cart.map(({ name, price, qty }) => ({ name, price, qty })),
   };
@@ -543,7 +567,7 @@ function renderHistory() {
 }
 
 function historyRow(r) {
-  const summary = r.note || r.lines.map((l) => l.name).join(', ');
+  const summary = r.note || r.lines.map((l) => l.name).join(', ') || (r.labor > 0 ? 'Ongkos' : '');
   return h('li', { class: 'tap' },
     h('button', { class: 'item-btn', type: 'button', onclick: () => openReceipt(r) },
       h('span', { class: 'grow' },
@@ -557,10 +581,15 @@ function openReceipt(r) {
   $('#receiptTitle').textContent = fmtDate(r.createdAt);
   $('#receiptNote').textContent = r.note || '';
   $('#receiptNote').hidden = !r.note;
-  $('#receiptLines').replaceChildren(...r.lines.map((l) =>
+  const lineRows = r.lines.map((l) =>
     h('li', {},
       h('div', { class: 'line-row' }, h('span', { class: 'item-name' }, l.name), h('strong', {}, rupiah(l.price * l.qty))),
-      h('div', { class: 'qty-price' }, `${l.qty} x ${rupiah(l.price)}`))));
+      h('div', { class: 'qty-price' }, `${l.qty} x ${rupiah(l.price)}`)));
+  if (r.labor > 0) {
+    lineRows.push(h('li', {},
+      h('div', { class: 'line-row' }, h('span', { class: 'item-name' }, 'Ongkos'), h('strong', {}, rupiah(r.labor)))));
+  }
+  $('#receiptLines').replaceChildren(...lineRows);
   $('#receiptTotal').textContent = rupiah(r.total);
   $('#receiptDialog').showModal();
 }
@@ -573,6 +602,8 @@ function reuseReceipt() {
   $('#calcCustomer').value = legacy ? (viewingReceipt.note || '') : (viewingReceipt.customer || '');
   $('#calcMotor').value = viewingReceipt.motor || '';
   $('#calcPlate').value = viewingReceipt.plate || '';
+  $('#calcLabor').value = viewingReceipt.labor > 0 ? numFmt(viewingReceipt.labor) : '';
+  updateCustSummary();
   renderCart();
   $('#receiptDialog').close();
   showTab('calc');
