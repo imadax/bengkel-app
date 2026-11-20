@@ -5,7 +5,7 @@
  */
 
 :root {
-  --css-version: '3.7.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
+  --css-version: '3.8.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #18202c;
@@ -363,6 +363,22 @@ details.stock-fix summary {
 .qris-preview img { max-width: 100%; max-height: 14rem; background: #fff; border: 1px solid var(--line); border-radius: .5rem; }
 .qris-img { display: block; width: 100%; max-height: 62vh; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: .5rem; margin-bottom: .5rem; }
 .qris-amount { margin: 0 0 .6rem; text-align: center; font-size: 1.3rem; font-weight: 750; }
+
+/* ---------- Keuangan ---------- */
+.toolbar select { flex: 1 1 9rem; min-width: 0; }
+.fin-summary { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .5rem; }
+.fin-card, .fin-net {
+  background: var(--card); border: 1px solid var(--line); border-radius: .7rem; padding: .7rem .8rem;
+  display: flex; flex-direction: column; gap: .15rem;
+}
+.fin-card span, .fin-net span { font-size: .78rem; color: var(--muted); font-weight: 600; }
+.fin-card strong { font-size: 1.15rem; font-weight: 750; }
+.fin-net { flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+.fin-net strong { font-size: 1.3rem; font-weight: 750; white-space: nowrap; }
+details.card.fin-detail .line-row { padding: .3rem 0; }
+details.card.fin-detail .fin-profit { border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .55rem; font-weight: 650; }
+details.card.fin-detail p { margin: .5rem 0 .6rem; }
+.item-btn > strong { white-space: nowrap; }
 
 /* ---------- Struk (hanya tampil saat cetak) ---------- */
 #printArea { display: none; }

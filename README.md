@@ -17,6 +17,8 @@ Dua mode penyimpanan, dipilih otomatis:
 - Stok: tiap barang boleh punya stok (kosong = tidak dihitung, cocok untuk jasa). Stok berkurang otomatis saat nota dicetak, dan bertambah lewat "Tambah stok" di dialog barang. Semua perubahan tercatat di Riwayat → Stok.
 - Draft nota: isi halaman Buat Nota bisa disimpan dulu dan dilanjutkan nanti. Stok baru berkurang saat nota dicetak.
 - QRIS: gambar QRIS diunggah di Pengaturan, lalu ditampilkan ke pelanggan lewat tombol QRIS di halaman Buat Nota.
+- Harga beli dan harga jual per barang. Semua barang dihitung stoknya (stok awal bawaan 1).
+- Keuangan: pemasukan (nota otomatis + catatan manual), pengeluaran (catatan manual, termasuk pembelian stok), sisa, dan untung penjualan.
 - Riwayat nota: setiap nota yang dicetak tersimpan. Bisa dilihat, dicetak ulang, disalin ke totalan, atau dihapus.
 - Ramah mata: tombol A- / A+ (6 tingkat ukuran), kontras tinggi, tombol besar.
 - Cloud: data otomatis tersimpan, bisa dipakai offline, status sinkron di bar atas.
@@ -77,7 +79,7 @@ Coba: Pengaturan, Pengaturan lainnya, Masukkan data dari file cadangan, pilih `c
 2. Buka `http://localhost:8000`, tekan **F12**, tab **Application**, **Service workers**, klik **Unregister**.
 3. Tab **Application**, **Storage**, klik **Clear site data**.
 4. Tab **Network**, centang **Disable cache** (selama DevTools terbuka), lalu tekan **Ctrl+Shift+R**.
-5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.7.0). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
+5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.8.0). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
 
 **Saat mengubah kode sendiri**, naikkan nomor versi di 3 tempat supaya semua browser pasti mengambil file baru: `VERSION` di `sw.js`, `APP_VERSION` di `app.js`, dan `?v=` di `index.html` (dua tempat) serta `--css-version` di `style.css`.
 

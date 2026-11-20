@@ -22,11 +22,12 @@
  *   watchReceipts(cb) / addReceipt(r) / deleteReceipt(id)
  *   watchDrafts(cb) / saveDraft(d) / deleteDraft(id)      draft nota
  *   watchStockLog(cb) / applyStock(moves)                  stok + riwayatnya
+ *   watchFinance(cb) / saveFinance(e) / deleteFinance(id)  catatan pemasukan & pengeluaran
  *   watchSettings(cb) / saveSettings({shopName, qris})   qris = gambar (data URL), kosong = belum ada
  */
 'use strict';
 
-const APP_VERSION = '3.7.0';
+const APP_VERSION = '3.8.0';
 const DB_NAME = 'harga-bengkel';
 const BACKUP_REMINDER_DAYS = 7;
 const MAX_HISTORY = 100;
@@ -112,10 +113,10 @@ function toast(message) {
 
 async function createLocalData() {
   const db = await new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 3);
+    const req = indexedDB.open(DB_NAME, 4);
     // Dipanggil saat database dibuat atau naik versi
     req.onupgradeneeded = () => {
-      for (const name of ['items', 'receipts', 'drafts', 'stockLog']) {
+      for (const name of ['items', 'receipts', 'drafts', 'stockLog', 'finance']) {
         if (!req.result.objectStoreNames.contains(name)) {
           req.result.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
         }
@@ -134,7 +135,7 @@ async function createLocalData() {
   const getAll = (name) => asPromise(objectStore(name, 'readonly').getAll());
 
   // Daftar "pendengar": setiap kali data berubah, semua pendengar diberi data terbaru
-  const watchers = { items: new Set(), receipts: new Set(), drafts: new Set(), stockLog: new Set() };
+  const watchers = { items: new Set(), receipts: new Set(), drafts: new Set(), stockLog: new Set(), finance: new Set() };
   const emit = async (name) => {
     const rows = await getAll(name);
     watchers[name].forEach((cb) => cb(rows));
@@ -182,6 +183,9 @@ async function createLocalData() {
     saveDraft: (draft) => put('drafts', draft),
     deleteDraft: (id) => remove('drafts', id),
     watchStockLog: (cb) => watch('stockLog', cb),
+    watchFinance: (cb) => watch('finance', cb),
+    saveFinance: (entry) => put('finance', entry),
+    deleteFinance: (id) => remove('finance', id),
     // Ubah stok dan catat riwayatnya dalam satu transaksi
     async applyStock(moves) {
       await new Promise((resolve, reject) => {
@@ -230,6 +234,7 @@ let itemsLoaded = false;        // sudah menerima data pertama?
 let receipts = [];              // riwayat nota
 let drafts = [];                // draft nota yang belum dicetak
 let stockLog = [];              // riwayat stok masuk / keluar
+let finance = [];               // catatan pemasukan / pengeluaran manual
 let currentDraftId = null;      // draft yang sedang dibuka di halaman Buat Nota
 let settings = { shopName: '' };
 let stopWatching = [];          // fungsi untuk berhenti mendengar (saat logout)
@@ -244,16 +249,17 @@ const describeError = (e) => (e ? `${e.code || 'error'}: ${e.message || e}` : '-
  * Tanpa field itu (mis. jasa servis) stok tidak dihitung dan tidak berkurang.
  * =================================================================== */
 
-const isTracked = (item) => !!item && typeof item.stock === 'number';
+// Semua barang dihitung stoknya. Barang tanpa angka stok dianggap stok 0 (habis).
+const stockOf = (item) => (item && typeof item.stock === 'number' ? item.stock : 0);
 const stockLabel = (n) => (n === 0 ? 'Stok habis' : `Stok ${n}`);
 
-// Tulisan kecil "Stok 5" di bawah nama barang (merah kalau habis / minus)
-function stockTag(item) {
-  if (!isTracked(item)) return null;
-  return h('span', { class: 'stock-tag block' + (item.stock <= 0 ? ' low' : '') }, stockLabel(item.stock));
+// Tulisan kecil "Stok 5" di bawah nama barang (merah kalau habis / minus).
+// withCost: tambahkan harga beli (hanya untuk daftar barang, bukan layar yang dilihat pelanggan)
+function stockTag(item, withCost = false) {
+  const n = stockOf(item);
+  const cost = withCost && item.cost > 0 ? ` · Beli ${rupiah(item.cost)}` : '';
+  return h('span', { class: 'stock-tag block' + (n <= 0 ? ' low' : '') }, stockLabel(n) + cost);
 }
-
-let editingId = null;   // id barang yang sedang diedit (null = tambah baru)
 
 function renderItems() {
   updateHome();
@@ -273,69 +279,89 @@ function itemRow(item) {
     h('button', { class: 'item-btn', type: 'button', onclick: () => openItemDialog(item) },
       h('span', { class: 'grow' },
         h('span', { class: 'item-name block' }, item.name),
-        stockTag(item)),
+        stockTag(item, true)),
       h('span', { class: 'item-price' }, rupiah(item.price))));
 }
+
+let editingId = null;   // id barang yang sedang diedit (null = tambah baru)
 
 function openItemDialog(item) {
   editingId = item ? item.id : null;
   $('#btnDeleteItem').hidden = !item;
   $('#itemDialogTitle').textContent = item ? 'Edit barang' : 'Tambah barang';
   $('#itemName').value = item ? item.name : '';
+  $('#itemCost').value = item && item.cost > 0 ? item.cost : '';
   $('#itemPrice').value = item ? item.price : '';
 
-  // Stok: barang yang sudah dihitung stoknya -> tambah / koreksi. Selain itu -> stok awal.
-  const tracked = isTracked(item);
-  $('#stockInitBlock').hidden = tracked;
-  $('#stockEditBlock').hidden = !tracked;
-  $('#stockInit').value = '';
+  // Barang baru: stok awal (bawaan 1). Barang lama: tambah stok atau koreksi.
+  $('#stockInitBlock').hidden = !!item;
+  $('#stockEditBlock').hidden = !item;
+  $('#stockInit').value = '1';
+  $('#initExpense').checked = false;
   $('#stockAdd').value = '';
+  $('#addExpense').checked = true;
   $('#stockFix').value = '';
   $('#stockEditBlock details').open = false;
-  if (tracked) $('#stockNow').textContent = item.stock;
+  if (item) $('#stockNow').textContent = stockOf(item);
+  updateExpenseHints();
   $('#itemDialog').showModal();
+}
+
+// "Catat sebagai pengeluaran (Rp ...)" = jumlah stok x harga beli
+function updateExpenseHints() {
+  const cost = parsePrice($('#itemCost').value) || 0;
+  const hint = (qty) => (qty > 0 ? (cost > 0 ? `(${rupiah(qty * cost)})` : '(isi harga beli dulu)') : '');
+  $('#initExpenseAmt').textContent = hint(parsePrice($('#stockInit').value) || 0);
+  $('#addExpenseAmt').textContent = hint(parsePrice($('#stockAdd').value) || 0);
 }
 
 async function saveItem(event) {
   event.preventDefault(); // cegah form memuat ulang halaman
   const name = $('#itemName').value.trim();
   const rawPrice = $('#itemPrice').value.trim();
-  if (!name || !rawPrice) return toast('Nama dan harga harus diisi');
+  if (!name || !rawPrice) return toast('Nama dan harga jual harus diisi');
 
-  const item = { name, price: parsePrice(rawPrice), updatedAt: Date.now() };
+  const cost = parsePrice($('#itemCost').value) || 0;
+  const item = { name, cost, price: parsePrice(rawPrice), updatedAt: Date.now() };
   if (editingId !== null) item.id = editingId;
 
-  // Rencana perubahan stok (kalau ada): tambah stok, koreksi, atau stok awal
+  // Rencana perubahan stok: stok awal (barang baru), atau tambah / koreksi (barang lama)
   const old = editingId !== null ? items.find((i) => i.id === editingId) : null;
   const at = Date.now();
   const moves = [];
-  let running = isTracked(old) ? old.stock : 0;
+  const purchases = [];   // pembelian yang dicatat sebagai pengeluaran
+  let running = stockOf(old);
   const plan = (delta, type, note, noLog = false) => {
     running += delta;
     moves.push({ delta, type, note, noLog, name, at, after: running });
   };
-  if (isTracked(old)) {
+  const buy = (qty) => {
+    if (cost > 0 && qty > 0) {
+      purchases.push({ type: 'out', amount: cost * qty, note: `Beli ${name} x${qty}`, at, createdAt: at, source: 'stock' });
+    }
+  };
+  if (old) {
     const add = parsePrice($('#stockAdd').value);
-    if (add > 0) plan(add, 'in', 'Tambah stok');
+    if (add > 0) {
+      plan(add, 'in', 'Tambah stok');
+      if ($('#addExpense').checked) buy(add);
+    }
     const fixRaw = $('#stockFix').value.trim();
     if (fixRaw !== '') {
       const fix = parsePrice(fixRaw);
       if (fix !== running) plan(fix - running, 'adjust', 'Koreksi stok');
     }
   } else {
-    const raw = $('#stockInit').value.trim();
-    if (raw !== '') {
-      const n = parsePrice(raw);
-      plan(n, 'in', 'Stok awal', n === 0);   // stok awal 0: cukup mulai dihitung, tanpa catatan
-    }
+    const n = parsePrice($('#stockInit').value);   // kosong = 0
+    plan(n, 'in', 'Stok awal', n === 0);           // stok awal 0: cukup dicatat tanpa riwayat
+    if ($('#initExpense').checked) buy(n);
   }
 
   try {
     const id = await data.saveItem(item);
-    if (moves.length) {
-      moves.forEach((m) => { m.itemId = id; });
-      await data.applyStock(moves);
-    }
+    moves.forEach((m) => { m.itemId = id; });
+    if (moves.length) await data.applyStock(moves);
+    for (const entry of purchases) await data.saveFinance(entry);
     $('#itemDialog').close();
     toast('Tersimpan');
   } catch (err) {
@@ -442,10 +468,11 @@ function renderCart() {
 // Petunjuk stok di baris totalan; merah kalau jumlah melebihi stok (tetap boleh dijual)
 function cartStockHint(c) {
   const it = c.itemId != null ? items.find((i) => i.id === c.itemId) : null;
-  if (!isTracked(it)) return null;
-  const short = c.qty > it.stock;
+  if (!it) return null;
+  const stock = stockOf(it);
+  const short = c.qty > stock;
   return h('div', { class: 'stock-tag' + (short ? ' low' : '') },
-    short ? `Stok tinggal ${Math.max(it.stock, 0)}` : `Stok ${it.stock}`);
+    short ? `Stok tinggal ${Math.max(stock, 0)}` : `Stok ${stock}`);
 }
 
 // Satu baris di totalan: nama, harga (bisa diubah), jumlah (- / +), subtotal.
@@ -758,7 +785,7 @@ async function printCart() {
   const stockOut = [];
   for (const c of cart) {
     const it = c.itemId != null ? items.find((i) => i.id === c.itemId) : null;
-    if (isTracked(it)) stockOut.push({ itemId: it.id, name: it.name, qty: c.qty, after: it.stock - c.qty });
+    if (it) stockOut.push({ itemId: it.id, name: it.name, qty: c.qty, after: stockOf(it) - c.qty });
   }
 
   const receipt = {
@@ -769,7 +796,11 @@ async function printCart() {
     note: [customer, motor, plate].filter(Boolean).join(' · '),   // ringkasan untuk riwayat
     labor: laborAmount(),   // ongkos jasa; sudah termasuk di total
     total: cartTotal(),
-    lines: cart.map(({ itemId, name, price, qty }) => ({ itemId: itemId ?? null, name, price, qty })),
+    // cost = harga beli saat dijual (untuk menghitung untung); kosong untuk barang manual
+    lines: cart.map(({ itemId, name, price, qty }) => {
+      const it = itemId != null ? items.find((i) => i.id === itemId) : null;
+      return { itemId: itemId ?? null, name, price, qty, cost: it ? (it.cost || 0) : null };
+    }),
     stockOut: stockOut.map(({ itemId, name, qty }) => ({ itemId, name, qty })),   // untuk mengembalikan stok kalau nota dihapus
   };
 
@@ -811,7 +842,7 @@ async function printCart() {
 let viewingReceipt = null;
 
 function renderHistory() {
-  updateHome();
+  renderFinance();   // total keuangan ikut berubah kalau nota bertambah / dihapus (sekaligus memperbarui Beranda)
   const rows = receipts.slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_HISTORY);
   $('#historyList').replaceChildren(...rows.map(historyRow));
   $('#historyEmpty').hidden = rows.length > 0;
@@ -870,19 +901,160 @@ async function deleteReceipt() {
   // Nota yang mengurangi stok: tawarkan mengembalikan stoknya
   const back = (r.stockOut || [])
     .map((o) => ({ o, it: items.find((i) => i.id === o.itemId) }))
-    .filter((x) => isTracked(x.it));
+    .filter((x) => !!x.it);
   const restore = back.length > 0 && confirm('Kembalikan stok barang dari nota ini?');
 
   try {
     if (restore) {
       await data.applyStock(back.map(({ o, it }) => ({
-        itemId: it.id, delta: o.qty, type: 'return', name: it.name, after: it.stock + o.qty,
+        itemId: it.id, delta: o.qty, type: 'return', name: it.name, after: stockOf(it) + o.qty,
         at: Date.now(), note: '', receiptId: r.id ?? null,
       })));
     }
     await data.deleteReceipt(r.id);
     $('#receiptDialog').close();
     toast(restore ? 'Dihapus, stok dikembalikan' : 'Dihapus');
+  } catch (err) {
+    console.error(err);
+    toast('Gagal menghapus');
+  }
+}
+
+/* ===================================================================
+ * KEUANGAN
+ * Pemasukan = nota yang dicetak (otomatis) + pemasukan lain (dicatat manual).
+ * Pengeluaran = catatan manual, termasuk pembelian stok dari dialog barang.
+ * Untung penjualan = nota dikurangi modal barang (harga beli saat dijual).
+ * =================================================================== */
+
+// Angka bertanda: -120000 -> "−Rp 120.000"
+const rupiahSigned = (n) => (n < 0 ? '−' : '') + rupiah(Math.abs(n));
+
+const fmtDay = (ms) => new Date(ms).toLocaleDateString('id-ID', { dateStyle: 'medium' });
+
+// Rentang waktu [dari, sampai) untuk pilihan periode
+function periodRange(key) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+  const day = (dd) => new Date(y, m, dd).getTime();
+  if (key === 'today') return [day(d), day(d + 1)];
+  if (key === 'week') return [day(d - 6), day(d + 1)];
+  if (key === 'lastmonth') return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()];
+  if (key === 'all') return [0, Infinity];
+  return [new Date(y, m, 1).getTime(), new Date(y, m + 1, 1).getTime()];   // bulan ini
+}
+
+function financeTotals([from, to]) {
+  const inRange = (t) => t >= from && t < to;
+  const sales = receipts.filter((r) => inRange(r.createdAt));
+  const manual = finance.filter((f) => inRange(f.at));
+  const salesTotal = sales.reduce((sum, r) => sum + (r.total || 0), 0);
+  const cogs = sales.reduce((sum, r) => sum + r.lines.reduce((t, l) => t + (l.cost || 0) * l.qty, 0), 0);
+  const otherIn = manual.filter((f) => f.type === 'in').reduce((sum, f) => sum + f.amount, 0);
+  const outTotal = manual.filter((f) => f.type === 'out').reduce((sum, f) => sum + f.amount, 0);
+  const inTotal = salesTotal + otherIn;
+  return { sales, manual, salesTotal, cogs, otherIn, inTotal, outTotal, net: inTotal - outTotal, profit: salesTotal - cogs };
+}
+
+function renderFinance() {
+  const t = financeTotals(periodRange($('#finPeriod').value));
+  $('#finIn').textContent = rupiah(t.inTotal);
+  $('#finOut').textContent = rupiah(t.outTotal);
+  $('#finNet').textContent = rupiahSigned(t.net);
+  $('#finNet').className = t.net < 0 ? 'minus' : '';
+  $('#finSales').textContent = rupiah(t.salesTotal);
+  $('#finOtherIn').textContent = rupiah(t.otherIn);
+  $('#finCogs').textContent = rupiah(t.cogs);
+  $('#finProfit').textContent = rupiahSigned(t.profit);
+
+  const rows = [
+    ...t.sales.map((r) => ({ at: r.createdAt, el: financeSaleRow(r) })),
+    ...t.manual.map((f) => ({ at: f.at, el: financeManualRow(f) })),
+  ].sort((a, b) => b.at - a.at).slice(0, 300);
+  $('#finList').replaceChildren(...rows.map((x) => x.el));
+  $('#finEmpty').hidden = rows.length > 0;
+  updateHome();
+}
+
+function financeRow(title, sub, amount, plus, onclick) {
+  return h('li', { class: 'tap' },
+    h('button', { class: 'item-btn', type: 'button', onclick },
+      h('span', { class: 'grow' },
+        h('span', { class: 'item-name block clip' }, title),
+        h('span', { class: 'stock-tag block' }, sub)),
+      h('strong', { class: plus ? 'plus' : 'minus' }, (plus ? '+' : '−') + rupiah(amount))));
+}
+
+function financeSaleRow(r) {
+  const title = r.note || r.lines.map((l) => l.name).join(', ') || 'Nota';
+  return financeRow(title, `${fmtDate(r.createdAt)} · Penjualan`, r.total || 0, true, () => openReceipt(r));
+}
+
+function financeManualRow(f) {
+  const kind = f.type === 'in' ? 'Pemasukan lain' : (f.source === 'stock' ? 'Beli barang' : 'Pengeluaran');
+  return financeRow(f.note || kind, `${fmtDay(f.at)} · ${kind}`, f.amount, f.type === 'in', () => openFinanceDialog(f));
+}
+
+const toDateInput = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+let editingFinance = null;
+
+function openFinanceDialog(f) {
+  editingFinance = f || null;
+  $('#financeDialogTitle').textContent = f ? 'Edit catatan' : 'Catat keuangan';
+  $('#btnDeleteFinance').hidden = !f;
+  $('#finType').value = f ? f.type : 'out';
+  $('#finAmount').value = f ? f.amount : '';
+  $('#finNote').value = f ? (f.note || '') : '';
+  $('#finDate').value = toDateInput(f ? f.at : Date.now());
+  $('#financeDialog').showModal();
+}
+
+async function saveFinanceForm(event) {
+  event.preventDefault();
+  const amount = parsePrice($('#finAmount').value);
+  const dateStr = $('#finDate').value;
+  if (!(amount > 0)) return toast('Jumlah harus diisi');
+  if (!dateStr) return toast('Tanggal harus diisi');
+
+  // Tanggal dipilih; jamnya ikut jam sekarang (atau jam lama kalau tanggalnya tidak diubah)
+  let at;
+  if (editingFinance && toDateInput(editingFinance.at) === dateStr) {
+    at = editingFinance.at;
+  } else {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const now = new Date();
+    at = new Date(y, m - 1, d, now.getHours(), now.getMinutes()).getTime();
+  }
+
+  const entry = {
+    type: $('#finType').value,
+    amount,
+    note: $('#finNote').value.trim(),
+    at,
+    createdAt: editingFinance ? (editingFinance.createdAt || at) : Date.now(),
+    source: editingFinance && editingFinance.source ? editingFinance.source : 'manual',
+  };
+  if (editingFinance) entry.id = editingFinance.id;
+  try {
+    await data.saveFinance(entry);
+    $('#financeDialog').close();
+    toast('Tersimpan');
+  } catch (err) {
+    console.error(err);
+    toast('Gagal menyimpan');
+  }
+}
+
+async function deleteFinanceEntry() {
+  if (!editingFinance || !confirm('Hapus catatan ini?')) return;
+  try {
+    await data.deleteFinance(editingFinance.id);
+    $('#financeDialog').close();
+    toast('Dihapus');
   } catch (err) {
     console.error(err);
     toast('Gagal menghapus');
@@ -933,7 +1105,7 @@ function buildBackup() {
     version: 1,
     exportedAt: new Date().toISOString(),
     shopName: settings.shopName,
-    items: items.map((i) => (isTracked(i) ? { name: i.name, price: i.price, stock: i.stock } : { name: i.name, price: i.price })),
+    items: items.map((i) => ({ name: i.name, cost: i.cost || 0, price: i.price, stock: stockOf(i) })),
   }, null, 2);
 }
 
@@ -994,7 +1166,8 @@ async function importBackup(file) {
     const name = String((x && x.name) ?? '').trim();
     const price = Number(x && x.price);
     const stock = x && x.stock != null && x.stock !== '' && Number.isFinite(Number(x.stock)) ? Number(x.stock) : undefined;
-    if (name && Number.isFinite(price) && price >= 0) clean.set(norm(name), { name, price, stock });
+    const cost = x && x.cost != null && x.cost !== '' && Number.isFinite(Number(x.cost)) ? Number(x.cost) : undefined;
+    if (name && Number.isFinite(price) && price >= 0) clean.set(norm(name), { name, price, cost, stock });
   }
   if (clean.size === 0) return toast('Tidak ada barang yang valid di file');
 
@@ -1004,8 +1177,8 @@ async function importBackup(file) {
   const toSave = [...clean.entries()].map(([key, x]) => {
     const old = existing.get(key);
     return old
-      ? { ...old, price: x.price, updatedAt: Date.now() }
-      : { name: x.name, price: x.price, updatedAt: Date.now(), ...(x.stock !== undefined ? { stock: x.stock } : {}) };
+      ? { ...old, price: x.price, updatedAt: Date.now(), ...(x.cost !== undefined ? { cost: x.cost } : {}) }
+      : { name: x.name, price: x.price, updatedAt: Date.now(), ...(x.cost !== undefined ? { cost: x.cost } : {}), ...(x.stock !== undefined ? { stock: x.stock } : {}) };
   });
 
   try {
@@ -1154,7 +1327,7 @@ function showQris() {
   $('#qrisDialog').showModal();
 }
 
-const TAB_TITLES = { home: 'Beranda', calc: 'Buat Nota', items: 'Daftar Harga', history: 'Riwayat', settings: 'Pengaturan' };
+const TAB_TITLES = { home: 'Beranda', calc: 'Buat Nota', items: 'Daftar Harga', history: 'Riwayat', finance: 'Keuangan', settings: 'Pengaturan' };
 
 function showTab(name) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
@@ -1166,6 +1339,7 @@ function showTab(name) {
   closeDrawer();
   window.scrollTo(0, 0);
   if (name === 'settings') renderDiag();
+  if (name === 'finance') renderFinance();
 }
 
 // Menu samping: dibuka dengan tombol tiga garis, ditutup dengan ketuk di luar menu, Esc, atau memilih menu.
@@ -1186,11 +1360,13 @@ function closeDrawer() {
 
 // Ringkasan di Beranda
 function updateHome() {
-  const out = items.filter((i) => isTracked(i) && i.stock <= 0).length;
+  const out = items.filter((i) => stockOf(i) <= 0).length;
   $('#homeItemCount').textContent = itemsLoaded
     ? `${items.length} barang${out ? ` · ${out} stok habis` : ''}`
     : 'Memuat…';
   $('#homeReceiptCount').textContent = receipts.length ? `${receipts.length} nota tersimpan` : 'Belum ada nota';
+  const m = financeTotals(periodRange('month'));
+  $('#homeFinanceSub').textContent = `Bulan ini: masuk ${rupiah(m.inTotal)} · keluar ${rupiah(m.outTotal)}`;
   $('#homeCalcSub').textContent = drafts.length
     ? `${drafts.length} draft menunggu dilanjutkan`
     : 'Pilih barang, isi pelanggan, lalu cetak';
@@ -1268,6 +1444,11 @@ function bindEvents() {
   $('#manualForm').addEventListener('submit', addManual);
   $('#btnClear').addEventListener('click', clearCart);
   $('#btnDraft').addEventListener('click', saveDraftAndClear);
+  $('#btnAddFinance').addEventListener('click', () => openFinanceDialog(null));
+  $('#financeForm').addEventListener('submit', saveFinanceForm);
+  $('#btnDeleteFinance').addEventListener('click', deleteFinanceEntry);
+  $('#finPeriod').addEventListener('change', renderFinance);
+  for (const id of ['#itemCost', '#stockInit', '#stockAdd']) $(id).addEventListener('input', updateExpenseHints);
   $('#btnQris').addEventListener('click', showQris);
   $('#qrisFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1388,6 +1569,10 @@ function startWatching() {
     drafts = list;
     renderDrafts();
   }, onError));
+  stopWatching.push(data.watchFinance((list) => {
+    finance = list;
+    renderFinance();
+  }, onError));
   stopWatching.push(data.watchStockLog((list) => {
     stockLog = list;
     renderStockLog();
@@ -1453,8 +1638,8 @@ async function startCloud() {
       startWatching();
     } else {
       stopWatchingAll();
-      items = []; receipts = []; drafts = []; stockLog = []; itemsLoaded = false; cart = []; currentDraftId = null;
-      renderItems(); renderHistory(); renderCart(); renderDrafts(); renderStockLog();
+      items = []; receipts = []; drafts = []; stockLog = []; finance = []; itemsLoaded = false; cart = []; currentDraftId = null;
+      renderItems(); renderHistory(); renderCart(); renderDrafts(); renderStockLog(); renderFinance();
       $('#syncState').hidden = true;
       setLocked(true);
       $('#btnLogin').disabled = false;

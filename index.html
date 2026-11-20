@@ -11,7 +11,7 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Imada Motor</title>
-  <link rel="stylesheet" href="style.css?v=3.7.0">
+  <link rel="stylesheet" href="style.css?v=3.8.0">
   <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
   <style id="pageStyle"></style>
 </head>
@@ -25,6 +25,7 @@
     <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12.5V4a1 1 0 0 1 1-1h8.5L21 11.5 11.5 21z"/><path d="M8 8h.01"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><path d="M15 5v4M9 15v4"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13v3"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><path d="M16 14h.01"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   </svg>
 
@@ -52,6 +53,7 @@
     <button type="button" data-tab="home" class="active"><svg class="ic"><use href="#i-home"/></svg>Beranda</button>
     <button type="button" data-tab="calc"><svg class="ic"><use href="#i-receipt"/></svg>Buat Nota</button>
     <button type="button" data-tab="items"><svg class="ic"><use href="#i-tag"/></svg>Daftar Harga</button>
+    <button type="button" data-tab="finance"><svg class="ic"><use href="#i-wallet"/></svg>Keuangan</button>
     <button type="button" data-tab="history"><svg class="ic"><use href="#i-clock"/></svg>Riwayat</button>
     <button type="button" data-tab="settings"><svg class="ic"><use href="#i-sliders"/></svg>Pengaturan</button>
   </nav>
@@ -93,6 +95,11 @@
         <button type="button" data-go="items">
           <svg class="ic"><use href="#i-tag"/></svg>
           <span class="grow"><strong>Daftar Harga</strong><small id="homeItemCount">&nbsp;</small></span>
+          <svg class="ic chev"><use href="#i-chevron"/></svg>
+        </button>
+        <button type="button" data-go="finance">
+          <svg class="ic"><use href="#i-wallet"/></svg>
+          <span class="grow"><strong>Keuangan</strong><small id="homeFinanceSub">&nbsp;</small></span>
           <svg class="ic chev"><use href="#i-chevron"/></svg>
         </button>
         <button type="button" data-go="history">
@@ -175,6 +182,39 @@
     </section>
 
     <!-- ===== RIWAYAT NOTA ===== -->
+    <section id="tab-finance" class="tab">
+      <div class="toolbar">
+        <select id="finPeriod" aria-label="Periode">
+          <option value="today">Hari ini</option>
+          <option value="week">7 hari terakhir</option>
+          <option value="month" selected>Bulan ini</option>
+          <option value="lastmonth">Bulan lalu</option>
+          <option value="all">Semua</option>
+        </select>
+        <button id="btnAddFinance" class="btn primary" type="button">+ Catat</button>
+      </div>
+
+      <div class="fin-summary">
+        <div class="fin-card"><span>Pemasukan</span><strong id="finIn" class="plus">Rp 0</strong></div>
+        <div class="fin-card"><span>Pengeluaran</span><strong id="finOut" class="minus">Rp 0</strong></div>
+      </div>
+      <div class="fin-net"><span>Sisa (masuk − keluar)</span><strong id="finNet">Rp 0</strong></div>
+
+      <details class="card cust fin-detail">
+        <summary>
+          <span class="cust-title">Rincian &amp; untung penjualan</span>
+        </summary>
+        <div class="line-row"><span>Penjualan nota</span><strong id="finSales">Rp 0</strong></div>
+        <div class="line-row"><span>Pemasukan lain</span><strong id="finOtherIn">Rp 0</strong></div>
+        <div class="line-row"><span>Modal barang yang terjual</span><strong id="finCogs">Rp 0</strong></div>
+        <div class="line-row fin-profit"><span>Untung penjualan</span><strong id="finProfit">Rp 0</strong></div>
+        <p class="muted small">Untung penjualan = penjualan nota dikurangi modal barang (harga beli). Modal hanya terhitung untuk nota yang dicetak setelah harga beli barangnya diisi.</p>
+      </details>
+
+      <ul id="finList" class="list"></ul>
+      <p id="finEmpty" class="muted">Belum ada catatan pada periode ini.</p>
+    </section>
+
     <section id="tab-history" class="tab">
       <div class="seg" role="group" aria-label="Jenis riwayat">
         <button type="button" class="active" data-hist="receipts">Nota</button>
@@ -293,23 +333,33 @@
         <label for="itemName">Nama barang</label>
         <input id="itemName" type="text" required>
       </div>
-      <div class="field">
-        <label for="itemPrice">Harga (Rp)</label>
-        <input id="itemPrice" type="text" inputmode="numeric" required>
+      <div class="row">
+        <div class="field grow">
+          <label for="itemCost">Harga beli (Rp)</label>
+          <input id="itemCost" type="text" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="field grow">
+          <label for="itemPrice">Harga jual (Rp)</label>
+          <input id="itemPrice" type="text" inputmode="numeric" required>
+        </div>
       </div>
 
-      <!-- Barang baru, atau barang lama yang belum dihitung stoknya -->
-      <div id="stockInitBlock" class="field">
-        <label for="stockInit" id="stockInitLabel">Stok awal <span class="muted">(kosongkan kalau tidak dihitung, misalnya jasa)</span></label>
-        <input id="stockInit" type="text" inputmode="numeric" placeholder="0">
+      <!-- Barang baru -->
+      <div id="stockInitBlock">
+        <div class="field">
+          <label for="stockInit">Stok awal</label>
+          <input id="stockInit" type="text" inputmode="numeric" value="1">
+        </div>
+        <label class="check"><input type="checkbox" id="initExpense"> <span>Catat sebagai pengeluaran <span id="initExpenseAmt" class="muted"></span></span></label>
       </div>
-      <!-- Barang yang stoknya sudah dihitung -->
+      <!-- Barang yang sudah ada -->
       <div id="stockEditBlock" hidden>
         <p class="stock-now">Stok sekarang: <strong id="stockNow">0</strong></p>
         <div class="field">
           <label for="stockAdd">Tambah stok <span class="muted">(beli barang baru)</span></label>
           <input id="stockAdd" type="text" inputmode="numeric" placeholder="0">
         </div>
+        <label class="check"><input type="checkbox" id="addExpense" checked> <span>Catat sebagai pengeluaran <span id="addExpenseAmt" class="muted"></span></span></label>
         <details class="stock-fix">
           <summary>Koreksi stok (kalau hitungan tidak cocok)</summary>
           <div class="field">
@@ -352,6 +402,38 @@
     </form>
   </dialog>
 
+  <!-- ===== DIALOG: CATAT PEMASUKAN / PENGELUARAN ===== -->
+  <dialog id="financeDialog">
+    <form id="financeForm" autocomplete="off">
+      <h2 id="financeDialogTitle">Catat keuangan</h2>
+      <div class="field">
+        <label for="finType">Jenis</label>
+        <select id="finType">
+          <option value="out">Pengeluaran</option>
+          <option value="in">Pemasukan</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="finAmount">Jumlah (Rp)</label>
+        <input id="finAmount" type="text" inputmode="numeric" required>
+      </div>
+      <div class="field">
+        <label for="finNote">Keterangan</label>
+        <input id="finNote" type="text" placeholder="Contoh: bayar listrik">
+      </div>
+      <div class="field">
+        <label for="finDate">Tanggal</label>
+        <input id="finDate" type="date" required>
+      </div>
+      <div class="actions">
+        <button type="button" id="btnDeleteFinance" class="btn danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Batal</button>
+        <button type="submit" class="btn primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ===== DIALOG: TAMPILKAN QRIS KE PELANGGAN ===== -->
   <dialog id="qrisDialog">
     <h2>Bayar dengan QRIS</h2>
@@ -386,6 +468,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3.7.0"></script>
+  <script src="app.js?v=3.8.0"></script>
 </body>
 </html>

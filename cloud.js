@@ -6,10 +6,11 @@
  * Google, jadi tidak perlu npm atau build tool.
  *
  * Bentuk data di Firestore:
- *   users/{uid}/items/{id}      -> { name, price, stock?, updatedAt }   (stock kosong = tidak dihitung)
+ *   users/{uid}/items/{id}      -> { name, cost (harga beli), price (harga jual), stock, updatedAt }
  *   users/{uid}/receipts/{id}   -> { createdAt, note, total, lines: [{name, price, qty}] }
  *   users/{uid}/drafts/{id}     -> { createdAt, updatedAt, customer, motor, plate, labor, lines: [...] }
  *   users/{uid}/stockLog/{id}   -> { itemId, name, type, qty, after, at, note }
+ *   users/{uid}/finance/{id}    -> { type: 'in'|'out', amount, note, at, source?, createdAt }
  *   users/{uid}/meta/settings   -> { shopName }
  *
  * PENTING soal offline: Firestore menyimpan salinan data di HP. Saat
@@ -121,7 +122,7 @@ export function createCloud(config) {
 
     /* ---------- Riwayat nota ---------- */
     watchReceipts(callback, onError) {
-      const q = query(col('receipts'), orderBy('createdAt', 'desc'), limit(100));
+      const q = query(col('receipts'), orderBy('createdAt', 'desc'), limit(1500));   // cukup untuk total keuangan sebulan penuh
       return onSnapshot(q, snapshotOptions, (snap) => {
         callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         reportSync(snap);
@@ -175,6 +176,23 @@ export function createCloud(config) {
         }
       }
       fire(batch.commit());
+    },
+
+    /* ---------- Keuangan (pemasukan / pengeluaran yang dicatat manual) ---------- */
+    watchFinance(callback, onError) {
+      const q = query(col('finance'), orderBy('at', 'desc'), limit(2000));
+      return onSnapshot(q, snapshotOptions, (snap) => {
+        callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, onError);
+    },
+    saveFinance(entry) {
+      const { id, ...fields } = entry;
+      const ref = id ? doc(col('finance'), id) : doc(col('finance'));
+      fire(setDoc(ref, fields));
+      return ref.id;
+    },
+    deleteFinance(id) {
+      fire(deleteDoc(doc(col('finance'), id)));
     },
 
     /* ---------- Pengaturan bersama (nama bengkel) ---------- */
