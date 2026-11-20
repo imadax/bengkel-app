@@ -20,11 +20,13 @@
  *   deleteItem(id)
  *   bulkSaveItems(list)
  *   watchReceipts(cb) / addReceipt(r) / deleteReceipt(id)
- *   watchSettings(cb) / saveSettings({shopName})
+ *   watchDrafts(cb) / saveDraft(d) / deleteDraft(id)      draft nota
+ *   watchStockLog(cb) / applyStock(moves)                  stok + riwayatnya
+ *   watchSettings(cb) / saveSettings({shopName, qris})   qris = gambar (data URL), kosong = belum ada
  */
 'use strict';
 
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.7.0';
 const DB_NAME = 'harga-bengkel';
 const BACKUP_REMINDER_DAYS = 7;
 const MAX_HISTORY = 100;
@@ -110,10 +112,10 @@ function toast(message) {
 
 async function createLocalData() {
   const db = await new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);
+    const req = indexedDB.open(DB_NAME, 3);
     // Dipanggil saat database dibuat atau naik versi
     req.onupgradeneeded = () => {
-      for (const name of ['items', 'receipts']) {
+      for (const name of ['items', 'receipts', 'drafts', 'stockLog']) {
         if (!req.result.objectStoreNames.contains(name)) {
           req.result.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
         }
@@ -132,7 +134,7 @@ async function createLocalData() {
   const getAll = (name) => asPromise(objectStore(name, 'readonly').getAll());
 
   // Daftar "pendengar": setiap kali data berubah, semua pendengar diberi data terbaru
-  const watchers = { items: new Set(), receipts: new Set() };
+  const watchers = { items: new Set(), receipts: new Set(), drafts: new Set(), stockLog: new Set() };
   const emit = async (name) => {
     const rows = await getAll(name);
     watchers[name].forEach((cb) => cb(rows));
@@ -155,7 +157,14 @@ async function createLocalData() {
   return {
     kind: 'local',
     watchItems: (cb) => watch('items', cb),
-    saveItem: (item) => put('items', item),
+    // Gabungkan dengan data lama supaya field stok tidak hilang saat edit nama/harga
+    async saveItem(item) {
+      if (item.id != null) {
+        const old = await asPromise(objectStore('items', 'readonly').get(item.id));
+        if (old) item = { ...old, ...item };
+      }
+      return put('items', item);
+    },
     deleteItem: (id) => remove('items', id),
     async bulkSaveItems(list) {
       await new Promise((resolve, reject) => {
@@ -169,12 +178,44 @@ async function createLocalData() {
     watchReceipts: (cb) => watch('receipts', cb),
     addReceipt: (receipt) => put('receipts', receipt),
     deleteReceipt: (id) => remove('receipts', id),
+    watchDrafts: (cb) => watch('drafts', cb),
+    saveDraft: (draft) => put('drafts', draft),
+    deleteDraft: (id) => remove('drafts', id),
+    watchStockLog: (cb) => watch('stockLog', cb),
+    // Ubah stok dan catat riwayatnya dalam satu transaksi
+    async applyStock(moves) {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(['items', 'stockLog'], 'readwrite');
+        const itemStore = tx.objectStore('items');
+        const logStore = tx.objectStore('stockLog');
+        for (const m of moves) {
+          const req = itemStore.get(m.itemId);
+          req.onsuccess = () => {
+            const it = req.result;
+            if (!it) return;
+            it.stock = (typeof it.stock === 'number' ? it.stock : 0) + m.delta;
+            itemStore.put(it);
+            if (!m.noLog) {
+              logStore.add({
+                itemId: m.itemId, name: m.name, type: m.type, qty: m.delta,
+                after: it.stock, at: m.at, note: m.note || '', receiptId: m.receiptId ?? null,
+              });
+            }
+          };
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+      await emit('items');
+      await emit('stockLog');
+    },
     watchSettings(cb) {
-      cb({ shopName: store.get('shopName', '') });
+      cb({ shopName: store.get('shopName', ''), qris: store.get('qris', '') });
       return () => {};
     },
     saveSettings(values) {
       if ('shopName' in values) store.set('shopName', values.shopName);
+      if ('qris' in values) store.set('qris', values.qris);
     },
   };
 }
@@ -187,6 +228,9 @@ let data;                       // adapter data aktif (lokal atau cloud)
 let items = [];                 // daftar barang
 let itemsLoaded = false;        // sudah menerima data pertama?
 let receipts = [];              // riwayat nota
+let drafts = [];                // draft nota yang belum dicetak
+let stockLog = [];              // riwayat stok masuk / keluar
+let currentDraftId = null;      // draft yang sedang dibuka di halaman Buat Nota
 let settings = { shopName: '' };
 let stopWatching = [];          // fungsi untuk berhenti mendengar (saat logout)
 
@@ -195,8 +239,19 @@ const diag = { lastError: '-', sync: '-', cloudTest: 'belum dicoba' };
 const describeError = (e) => (e ? `${e.code || 'error'}: ${e.message || e}` : '-');
 
 /* ===================================================================
- * 3. DAFTAR BARANG
+ * 3. DAFTAR BARANG (termasuk stok)
+ * Barang punya field `stock` (angka) hanya kalau stoknya dihitung.
+ * Tanpa field itu (mis. jasa servis) stok tidak dihitung dan tidak berkurang.
  * =================================================================== */
+
+const isTracked = (item) => !!item && typeof item.stock === 'number';
+const stockLabel = (n) => (n === 0 ? 'Stok habis' : `Stok ${n}`);
+
+// Tulisan kecil "Stok 5" di bawah nama barang (merah kalau habis / minus)
+function stockTag(item) {
+  if (!isTracked(item)) return null;
+  return h('span', { class: 'stock-tag block' + (item.stock <= 0 ? ' low' : '') }, stockLabel(item.stock));
+}
 
 let editingId = null;   // id barang yang sedang diedit (null = tambah baru)
 
@@ -216,7 +271,9 @@ function renderItems() {
 function itemRow(item) {
   return h('li', { class: 'tap' },
     h('button', { class: 'item-btn', type: 'button', onclick: () => openItemDialog(item) },
-      h('span', { class: 'item-name' }, item.name),
+      h('span', { class: 'grow' },
+        h('span', { class: 'item-name block' }, item.name),
+        stockTag(item)),
       h('span', { class: 'item-price' }, rupiah(item.price))));
 }
 
@@ -226,6 +283,16 @@ function openItemDialog(item) {
   $('#itemDialogTitle').textContent = item ? 'Edit barang' : 'Tambah barang';
   $('#itemName').value = item ? item.name : '';
   $('#itemPrice').value = item ? item.price : '';
+
+  // Stok: barang yang sudah dihitung stoknya -> tambah / koreksi. Selain itu -> stok awal.
+  const tracked = isTracked(item);
+  $('#stockInitBlock').hidden = tracked;
+  $('#stockEditBlock').hidden = !tracked;
+  $('#stockInit').value = '';
+  $('#stockAdd').value = '';
+  $('#stockFix').value = '';
+  $('#stockEditBlock details').open = false;
+  if (tracked) $('#stockNow').textContent = item.stock;
   $('#itemDialog').showModal();
 }
 
@@ -238,8 +305,37 @@ async function saveItem(event) {
   const item = { name, price: parsePrice(rawPrice), updatedAt: Date.now() };
   if (editingId !== null) item.id = editingId;
 
+  // Rencana perubahan stok (kalau ada): tambah stok, koreksi, atau stok awal
+  const old = editingId !== null ? items.find((i) => i.id === editingId) : null;
+  const at = Date.now();
+  const moves = [];
+  let running = isTracked(old) ? old.stock : 0;
+  const plan = (delta, type, note, noLog = false) => {
+    running += delta;
+    moves.push({ delta, type, note, noLog, name, at, after: running });
+  };
+  if (isTracked(old)) {
+    const add = parsePrice($('#stockAdd').value);
+    if (add > 0) plan(add, 'in', 'Tambah stok');
+    const fixRaw = $('#stockFix').value.trim();
+    if (fixRaw !== '') {
+      const fix = parsePrice(fixRaw);
+      if (fix !== running) plan(fix - running, 'adjust', 'Koreksi stok');
+    }
+  } else {
+    const raw = $('#stockInit').value.trim();
+    if (raw !== '') {
+      const n = parsePrice(raw);
+      plan(n, 'in', 'Stok awal', n === 0);   // stok awal 0: cukup mulai dihitung, tanpa catatan
+    }
+  }
+
   try {
-    await data.saveItem(item);
+    const id = await data.saveItem(item);
+    if (moves.length) {
+      moves.forEach((m) => { m.itemId = id; });
+      await data.applyStock(moves);
+    }
     $('#itemDialog').close();
     toast('Tersimpan');
   } catch (err) {
@@ -264,7 +360,7 @@ async function removeItem() {
 
 /* ===================================================================
  * 4. TOTALAN (KERANJANG)
- * Bentuk satu baris: { key, name, price, qty }
+ * Bentuk satu baris: { key, itemId (kosong untuk barang manual), name, price, qty }
  * Keranjang hanya ada di memori (hilang kalau halaman ditutup).
  * =================================================================== */
 
@@ -293,7 +389,8 @@ function renderCalcResults() {
           $('#calcSearch').value = '';
           renderCalcResults();
         },
-      }, h('span', { class: 'item-name' }, item.name), h('span', { class: 'item-price' }, rupiah(item.price)))));
+      }, h('span', { class: 'grow' }, h('span', { class: 'item-name block' }, item.name), stockTag(item)),
+         h('span', { class: 'item-price' }, rupiah(item.price)))));
 
   // Kalau tidak ada yang cocok, tawarkan tambah manual dengan nama yang diketik
   if (found.length === 0) {
@@ -309,7 +406,7 @@ function addToCart(item) {
   const key = 'i' + item.id;
   const existing = cart.find((c) => c.key === key);
   if (existing) existing.qty += 1;
-  else cart.push({ key, name: item.name, price: item.price, qty: 1 });
+  else cart.push({ key, itemId: item.id, name: item.name, price: item.price, qty: 1 });
   renderCart();
 }
 
@@ -319,19 +416,36 @@ function updateTotals() {
   $('#cartTotal').textContent = rupiah(cartTotal());
   const any = cart.length > 0 || laborAmount() > 0;   // nota hanya ongkos juga boleh
   $('#btnPrint').disabled = !any;
-  $('#btnClear').disabled = !any;
+  $('#btnDraft').disabled = !cartHasContent();
+  $('#btnClear').disabled = !cartHasContent();
+}
+
+// Ada isi di halaman Buat Nota? (barang, ongkos, atau data pelanggan)
+function cartHasContent() {
+  return cart.length > 0 || laborAmount() > 0
+    || ['#calcCustomer', '#calcMotor', '#calcPlate'].some((id) => $(id).value.trim() !== '');
 }
 
 // Ringkasan data pelanggan yang tampil saat kotaknya dilipat
 function updateCustSummary() {
   const v = ['#calcCustomer', '#calcMotor', '#calcPlate'].map((id) => $(id).value.trim()).filter(Boolean);
   $('#custSummary').textContent = v.join(' · ');
+  updateTotals();
 }
 
 function renderCart() {
   $('#cartList').replaceChildren(...cart.map(cartRow));
   $('#cartEmpty').hidden = cart.length > 0;
   updateTotals();
+}
+
+// Petunjuk stok di baris totalan; merah kalau jumlah melebihi stok (tetap boleh dijual)
+function cartStockHint(c) {
+  const it = c.itemId != null ? items.find((i) => i.id === c.itemId) : null;
+  if (!isTracked(it)) return null;
+  const short = c.qty > it.stock;
+  return h('div', { class: 'stock-tag' + (short ? ' low' : '') },
+    short ? `Stok tinggal ${Math.max(it.stock, 0)}` : `Stok ${it.stock}`);
 }
 
 // Satu baris di totalan: nama, harga (bisa diubah), jumlah (- / +), subtotal.
@@ -353,7 +467,7 @@ function cartRow(c) {
 
   return h('li', {},
     h('div', { class: 'cart-top' },
-      h('div', { class: 'item-name grow' }, c.name),
+      h('div', { class: 'grow' }, h('div', { class: 'item-name' }, c.name), cartStockHint(c)),
       h('button', {
         class: 'btn small danger', type: 'button', 'aria-label': 'Hapus dari totalan',
         onclick: () => { cart = cart.filter((x) => x !== c); renderCart(); },
@@ -405,15 +519,120 @@ async function addManual(event) {
   renderCart();
 }
 
-function clearCart() {
-  if (!confirm('Kosongkan totalan?')) return;
+// Kosongkan semua isian tanpa bertanya (dipakai setelah cetak dan setelah simpan draft)
+function resetForm() {
   cart = [];
+  currentDraftId = null;
   $('#calcCustomer').value = '';
   $('#calcMotor').value = '';
   $('#calcPlate').value = '';
   $('#calcLabor').value = '';
   updateCustSummary();
   renderCart();
+  renderDrafts();
+}
+
+function clearCart() {
+  const msg = currentDraftId != null
+    ? 'Kosongkan nota ini? Draft yang sudah tersimpan tidak ikut terhapus.'
+    : 'Kosongkan nota ini?';
+  if (!confirm(msg)) return;
+  resetForm();
+}
+
+/* ---------- Draft nota ----------
+ * Isi halaman Buat Nota bisa disimpan dulu (mis. motor belum selesai),
+ * lalu dilanjutkan kapan saja sambil membuat nota lain.
+ * Stok TIDAK berkurang sampai nota dicetak. */
+
+function formSnapshot() {
+  return {
+    customer: $('#calcCustomer').value.trim(),
+    motor: $('#calcMotor').value.trim(),
+    plate: $('#calcPlate').value.trim(),
+    labor: laborAmount(),
+    lines: cart.map(({ itemId, name, price, qty }) => ({ itemId: itemId ?? null, name, price, qty })),
+  };
+}
+
+// Simpan isi halaman sekarang sebagai draft (menimpa draft yang sedang dibuka, atau draft baru)
+async function persistDraft() {
+  const now = Date.now();
+  const existing = drafts.find((d) => d.id === currentDraftId);
+  const draft = { ...formSnapshot(), createdAt: existing ? existing.createdAt : now, updatedAt: now };
+  if (currentDraftId != null) draft.id = currentDraftId;
+  return data.saveDraft(draft);
+}
+
+async function saveDraftAndClear() {
+  if (!cartHasContent()) return;
+  try {
+    await persistDraft();
+    resetForm();
+    toast('Disimpan sebagai draft');
+  } catch (err) {
+    console.error(err);
+    toast('Gagal menyimpan draft');
+  }
+}
+
+async function resumeDraft(d) {
+  // Isi yang sedang dikerjakan disimpan dulu supaya tidak hilang
+  if (cartHasContent()) {
+    try {
+      await persistDraft();
+      toast('Nota sebelumnya disimpan ke draft');
+    } catch (err) {
+      console.error(err);
+      return toast('Gagal menyimpan nota yang sedang dibuka');
+    }
+  }
+  cart = d.lines.map((l) => ({ key: 'd' + Date.now() + Math.random(), ...l }));
+  currentDraftId = d.id;
+  $('#calcCustomer').value = d.customer || '';
+  $('#calcMotor').value = d.motor || '';
+  $('#calcPlate').value = d.plate || '';
+  $('#calcLabor').value = d.labor > 0 ? numFmt(d.labor) : '';
+  updateCustSummary();
+  renderCart();
+  renderDrafts();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteDraft(d) {
+  if (!confirm('Hapus draft ini?')) return;
+  try {
+    await data.deleteDraft(d.id);
+    if (d.id === currentDraftId) currentDraftId = null;
+    renderDrafts();
+    toast('Draft dihapus');
+  } catch (err) {
+    console.error(err);
+    toast('Gagal menghapus draft');
+  }
+}
+
+function draftRow(d) {
+  const title = [d.customer, d.motor, d.plate].filter(Boolean).join(' · ') || 'Tanpa nama';
+  const total = d.lines.reduce((sum, l) => sum + l.price * l.qty, 0) + (d.labor || 0);
+  const open = d.id === currentDraftId;
+  return h('li', {},
+    h('div', { class: 'draft-info' },
+      h('div', { class: 'item-name clip' }, title),
+      h('div', { class: 'muted small' }, `${d.lines.length} barang · ${rupiah(total)} · ${fmtDate(d.updatedAt)}`)),
+    h('div', { class: 'draft-actions' },
+      open
+        ? h('span', { class: 'muted small' }, 'Sedang dibuka')
+        : h('button', { class: 'btn small primary', type: 'button', onclick: () => resumeDraft(d) }, 'Lanjutkan'),
+      h('button', { class: 'btn small danger', type: 'button', 'aria-label': 'Hapus draft', onclick: () => deleteDraft(d) }, '✕')));
+}
+
+function renderDrafts() {
+  const list = drafts.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+  $('#draftBox').hidden = list.length === 0;
+  $('#draftSummary').textContent = `${list.length} tersimpan`;
+  $('#draftList').replaceChildren(...list.map(draftRow));
+  updateHome();
 }
 
 /* ===================================================================
@@ -534,6 +753,14 @@ async function printCart() {
   const customer = $('#calcCustomer').value.trim();
   const motor = $('#calcMotor').value.trim();
   const plate = $('#calcPlate').value.trim();
+
+  // Barang yang stoknya dihitung akan dikurangi sesuai jumlah yang dijual
+  const stockOut = [];
+  for (const c of cart) {
+    const it = c.itemId != null ? items.find((i) => i.id === c.itemId) : null;
+    if (isTracked(it)) stockOut.push({ itemId: it.id, name: it.name, qty: c.qty, after: it.stock - c.qty });
+  }
+
   const receipt = {
     createdAt: Date.now(),
     customer,
@@ -542,15 +769,39 @@ async function printCart() {
     note: [customer, motor, plate].filter(Boolean).join(' · '),   // ringkasan untuk riwayat
     labor: laborAmount(),   // ongkos jasa; sudah termasuk di total
     total: cartTotal(),
-    lines: cart.map(({ name, price, qty }) => ({ name, price, qty })),
+    lines: cart.map(({ itemId, name, price, qty }) => ({ itemId: itemId ?? null, name, price, qty })),
+    stockOut: stockOut.map(({ itemId, name, qty }) => ({ itemId, name, qty })),   // untuk mengembalikan stok kalau nota dihapus
   };
+
+  let receiptId = null;
   try {
-    await data.addReceipt(receipt); // masuk riwayat
+    receiptId = await data.addReceipt(receipt); // masuk riwayat
   } catch (err) {
     console.error(err);
     toast('Nota tercetak, tapi gagal masuk riwayat');
   }
+
+  if (stockOut.length > 0) {
+    try {
+      await data.applyStock(stockOut.map((o) => ({
+        itemId: o.itemId, delta: -o.qty, type: 'out', name: o.name, after: o.after,
+        at: receipt.createdAt, note: receipt.note, receiptId,
+      })));
+    } catch (err) {
+      console.error(err);
+      toast('Nota tersimpan, tapi stok gagal dikurangi');
+    }
+  }
+
+  // Kalau nota ini berasal dari draft, draft-nya sudah selesai
+  if (currentDraftId != null) {
+    try { await data.deleteDraft(currentDraftId); } catch (err) { console.error(err); }
+  }
+
   printNow(receipt);
+  // Halaman dikosongkan supaya nota yang sama tidak tersimpan dan mengurangi stok dua kali.
+  // Mau cetak lagi? Buka Riwayat, lalu "Cetak ulang".
+  resetForm();
 }
 
 /* ===================================================================
@@ -598,6 +849,7 @@ function openReceipt(r) {
 function reuseReceipt() {
   if (!viewingReceipt) return;
   cart = viewingReceipt.lines.map((l) => ({ key: 'h' + Date.now() + Math.random(), ...l }));
+  currentDraftId = null;
   const legacy = viewingReceipt.customer == null && viewingReceipt.motor == null && viewingReceipt.plate == null;
   $('#calcCustomer').value = legacy ? (viewingReceipt.note || '') : (viewingReceipt.customer || '');
   $('#calcMotor').value = viewingReceipt.motor || '';
@@ -613,14 +865,60 @@ function reuseReceipt() {
 async function deleteReceipt() {
   if (!viewingReceipt) return;
   if (!confirm('Hapus nota ini dari riwayat?')) return;
+  const r = viewingReceipt;
+
+  // Nota yang mengurangi stok: tawarkan mengembalikan stoknya
+  const back = (r.stockOut || [])
+    .map((o) => ({ o, it: items.find((i) => i.id === o.itemId) }))
+    .filter((x) => isTracked(x.it));
+  const restore = back.length > 0 && confirm('Kembalikan stok barang dari nota ini?');
+
   try {
-    await data.deleteReceipt(viewingReceipt.id);
+    if (restore) {
+      await data.applyStock(back.map(({ o, it }) => ({
+        itemId: it.id, delta: o.qty, type: 'return', name: it.name, after: it.stock + o.qty,
+        at: Date.now(), note: '', receiptId: r.id ?? null,
+      })));
+    }
+    await data.deleteReceipt(r.id);
     $('#receiptDialog').close();
-    toast('Dihapus');
+    toast(restore ? 'Dihapus, stok dikembalikan' : 'Dihapus');
   } catch (err) {
     console.error(err);
     toast('Gagal menghapus');
   }
+}
+
+/* ---------- Riwayat stok ---------- */
+
+const STOCK_TYPES = { in: 'Stok masuk', out: 'Terjual', adjust: 'Koreksi stok', return: 'Nota dihapus, stok kembali' };
+
+function showHist(which) {
+  $$('.seg [data-hist]').forEach((b) => b.classList.toggle('active', b.dataset.hist === which));
+  $('#histReceipts').hidden = which !== 'receipts';
+  $('#histStock').hidden = which !== 'stock';
+}
+
+function renderStockLog() {
+  const q = $('#stockSearch').value;
+  const rows = stockLog
+    .filter((l) => matches(l.name || '', q))
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 300);
+  $('#stockLogList').replaceChildren(...rows.map(stockLogRow));
+  $('#stockLogEmpty').hidden = rows.length > 0;
+}
+
+function stockLogRow(l) {
+  const plus = l.qty > 0;
+  const kind = l.type === 'in' && l.note ? l.note : (STOCK_TYPES[l.type] || l.type);
+  const detail = [fmtDate(l.at), kind, l.type === 'out' ? l.note : '',
+    typeof l.after === 'number' ? `stok jadi ${l.after}` : ''].filter(Boolean).join(' · ');
+  return h('li', {},
+    h('div', { class: 'line-row' },
+      h('span', { class: 'item-name' }, l.name),
+      h('strong', { class: plus ? 'plus' : 'minus' }, (plus ? '+' : '−') + Math.abs(l.qty))),
+    h('div', { class: 'qty-price' }, detail));
 }
 
 /* ===================================================================
@@ -635,7 +933,7 @@ function buildBackup() {
     version: 1,
     exportedAt: new Date().toISOString(),
     shopName: settings.shopName,
-    items: items.map(({ name, price }) => ({ name, price })),
+    items: items.map((i) => (isTracked(i) ? { name: i.name, price: i.price, stock: i.stock } : { name: i.name, price: i.price })),
   }, null, 2);
 }
 
@@ -695,7 +993,8 @@ async function importBackup(file) {
   for (const x of list) {
     const name = String((x && x.name) ?? '').trim();
     const price = Number(x && x.price);
-    if (name && Number.isFinite(price) && price >= 0) clean.set(norm(name), { name, price });
+    const stock = x && x.stock != null && x.stock !== '' && Number.isFinite(Number(x.stock)) ? Number(x.stock) : undefined;
+    if (name && Number.isFinite(price) && price >= 0) clean.set(norm(name), { name, price, stock });
   }
   if (clean.size === 0) return toast('Tidak ada barang yang valid di file');
 
@@ -706,7 +1005,7 @@ async function importBackup(file) {
     const old = existing.get(key);
     return old
       ? { ...old, price: x.price, updatedAt: Date.now() }
-      : { name: x.name, price: x.price, updatedAt: Date.now() };
+      : { name: x.name, price: x.price, updatedAt: Date.now(), ...(x.stock !== undefined ? { stock: x.stock } : {}) };
   });
 
   try {
@@ -769,9 +1068,93 @@ function applySettingsToUI() {
   const shop = settings.shopName || '';
   if (document.activeElement !== $('#shopName')) $('#shopName').value = shop;
   applyNotaHead();
+  updateQris();
 }
 
-const TAB_TITLES = { home: 'Beranda', calc: 'Buat Nota', items: 'Daftar Harga', history: 'Riwayat Nota', settings: 'Pengaturan' };
+/* ---------- QRIS ----------
+ * Gambar QRIS diunggah di Pengaturan, dikecilkan, lalu disimpan sebagai data URL
+ * di pengaturan bersama (cloud) atau localStorage (mode lokal).
+ * Tombol QRIS di halaman Buat Nota menampilkannya ke pelanggan. */
+
+const QRIS_MAX_CHARS = 700000;   // batas ukuran data URL (dokumen Firestore maks 1 MiB)
+
+function updateQris() {
+  const has = !!settings.qris;
+  $('#qrisPreviewBox').hidden = !has;
+  $('#qrisEmpty').hidden = has;
+  $('#btnQrisDelete').hidden = !has;
+  $('#btnQris').hidden = !has;
+  $('#qrisPick').textContent = has ? 'Ganti QRIS' : 'Unggah QRIS';
+  if (has && $('#qrisPreview').getAttribute('src') !== settings.qris) $('#qrisPreview').src = settings.qris;
+}
+
+// Foto / screenshot -> JPEG berukuran wajar (kualitas tetap cukup untuk dipindai)
+async function imageToDataUrl(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error('format tidak didukung'));
+      im.src = src;
+    });
+    for (const [maxSide, quality] of [[1000, 0.9], [1000, 0.75], [800, 0.75], [600, 0.7]]) {
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';   // latar putih supaya gambar transparan tetap bisa dipindai
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL('image/jpeg', quality);
+      if (url.length <= QRIS_MAX_CHARS) return url;
+    }
+    throw new Error('gambar terlalu besar');
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+async function uploadQris(file) {
+  let url;
+  try {
+    url = await imageToDataUrl(file);
+  } catch (err) {
+    console.error(err);
+    return toast('Gambar tidak bisa dibaca. Pakai foto atau screenshot JPG / PNG.');
+  }
+  const previous = settings.qris;
+  settings.qris = url;
+  data.saveSettings({ qris: url });
+  // Mode lokal: penyimpanan browser bisa penuh tanpa memberi tahu
+  if (data.kind === 'local' && store.get('qris', '') !== url) {
+    settings.qris = previous;
+    updateQris();
+    return toast('QRIS gagal disimpan (penyimpanan HP penuh)');
+  }
+  updateQris();
+  toast('QRIS tersimpan');
+}
+
+function deleteQris() {
+  if (!confirm('Hapus QRIS yang tersimpan?')) return;
+  settings.qris = '';
+  data.saveSettings({ qris: '' });
+  updateQris();
+  toast('QRIS dihapus');
+}
+
+function showQris() {
+  if (!settings.qris) return;
+  $('#qrisImg').src = settings.qris;
+  const total = cartTotal();
+  $('#qrisAmount').hidden = total <= 0;
+  $('#qrisAmount').textContent = 'Total ' + rupiah(total);
+  $('#qrisDialog').showModal();
+}
+
+const TAB_TITLES = { home: 'Beranda', calc: 'Buat Nota', items: 'Daftar Harga', history: 'Riwayat', settings: 'Pengaturan' };
 
 function showTab(name) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + name));
@@ -803,8 +1186,14 @@ function closeDrawer() {
 
 // Ringkasan di Beranda
 function updateHome() {
-  $('#homeItemCount').textContent = itemsLoaded ? `${items.length} barang` : 'Memuat…';
+  const out = items.filter((i) => isTracked(i) && i.stock <= 0).length;
+  $('#homeItemCount').textContent = itemsLoaded
+    ? `${items.length} barang${out ? ` · ${out} stok habis` : ''}`
+    : 'Memuat…';
   $('#homeReceiptCount').textContent = receipts.length ? `${receipts.length} nota tersimpan` : 'Belum ada nota';
+  $('#homeCalcSub').textContent = drafts.length
+    ? `${drafts.length} draft menunggu dilanjutkan`
+    : 'Pilih barang, isi pelanggan, lalu cetak';
 }
 
 // Panel Diagnosa: menampilkan versi file yang BENAR-BENAR berjalan dan keadaan cloud.
@@ -878,9 +1267,19 @@ function bindEvents() {
   $('#btnManual').addEventListener('click', () => openManualDialog());
   $('#manualForm').addEventListener('submit', addManual);
   $('#btnClear').addEventListener('click', clearCart);
+  $('#btnDraft').addEventListener('click', saveDraftAndClear);
+  $('#btnQris').addEventListener('click', showQris);
+  $('#qrisFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';   // supaya file yang sama bisa dipilih lagi
+    if (file) await uploadQris(file);
+  });
+  $('#btnQrisDelete').addEventListener('click', deleteQris);
   $('#btnPrint').addEventListener('click', printCart);
 
   // Riwayat
+  $$('.seg [data-hist]').forEach((b) => b.addEventListener('click', () => showHist(b.dataset.hist)));
+  $('#stockSearch').addEventListener('input', renderStockLog);
   $('#btnReprint').addEventListener('click', () => viewingReceipt && printNow(viewingReceipt));
   $('#btnReuse').addEventListener('click', reuseReceipt);
   $('#btnDeleteReceipt').addEventListener('click', deleteReceipt);
@@ -909,7 +1308,7 @@ function bindEvents() {
   });
 
   // Diagnosa
-  $('details.card').addEventListener('toggle', renderDiag);
+  $('#tab-settings details.card').addEventListener('toggle', renderDiag);
   $('#btnDiagCopy').addEventListener('click', async () => {
     await renderDiag();
     try {
@@ -985,6 +1384,14 @@ function startWatching() {
     receipts = list;
     renderHistory();
   }, onError));
+  stopWatching.push(data.watchDrafts((list) => {
+    drafts = list;
+    renderDrafts();
+  }, onError));
+  stopWatching.push(data.watchStockLog((list) => {
+    stockLog = list;
+    renderStockLog();
+  }, onError));
   stopWatching.push(data.watchSettings((values) => {
     settings = { shopName: '', ...values };
     applySettingsToUI();
@@ -1046,8 +1453,8 @@ async function startCloud() {
       startWatching();
     } else {
       stopWatchingAll();
-      items = []; receipts = []; itemsLoaded = false; cart = [];
-      renderItems(); renderHistory(); renderCart();
+      items = []; receipts = []; drafts = []; stockLog = []; itemsLoaded = false; cart = []; currentDraftId = null;
+      renderItems(); renderHistory(); renderCart(); renderDrafts(); renderStockLog();
       $('#syncState').hidden = true;
       setLocked(true);
       $('#btnLogin').disabled = false;

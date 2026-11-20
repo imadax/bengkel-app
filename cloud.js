@@ -6,8 +6,10 @@
  * Google, jadi tidak perlu npm atau build tool.
  *
  * Bentuk data di Firestore:
- *   users/{uid}/items/{id}      -> { name, price, updatedAt }
+ *   users/{uid}/items/{id}      -> { name, price, stock?, updatedAt }   (stock kosong = tidak dihitung)
  *   users/{uid}/receipts/{id}   -> { createdAt, note, total, lines: [{name, price, qty}] }
+ *   users/{uid}/drafts/{id}     -> { createdAt, updatedAt, customer, motor, plate, labor, lines: [...] }
+ *   users/{uid}/stockLog/{id}   -> { itemId, name, type, qty, after, at, note }
  *   users/{uid}/meta/settings   -> { shopName }
  *
  * PENTING soal offline: Firestore menyimpan salinan data di HP. Saat
@@ -21,7 +23,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, query, orderBy, limit,
+  collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, query, orderBy, limit, increment,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const BATCH_SIZE = 400; // batas Firestore 500 operasi per batch
@@ -99,7 +101,8 @@ export function createCloud(config) {
     saveItem(item) {
       const { id, ...fields } = item;
       const ref = id ? doc(col('items'), id) : doc(col('items'));
-      fire(setDoc(ref, fields));
+      // merge: edit nama/harga tidak boleh menghapus field stok
+      fire(setDoc(ref, fields, { merge: true }));
       return ref.id;
     },
     deleteItem(id) {
@@ -131,6 +134,47 @@ export function createCloud(config) {
     },
     deleteReceipt(id) {
       fire(deleteDoc(doc(col('receipts'), id)));
+    },
+
+    /* ---------- Draft nota ---------- */
+    watchDrafts(callback, onError) {
+      const q = query(col('drafts'), orderBy('updatedAt', 'desc'), limit(50));
+      return onSnapshot(q, snapshotOptions, (snap) => {
+        callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, onError);
+    },
+    // draft.id ada -> timpa draft itu; tidak ada -> draft baru
+    saveDraft(draft) {
+      const { id, ...fields } = draft;
+      const ref = id ? doc(col('drafts'), id) : doc(col('drafts'));
+      fire(setDoc(ref, fields));
+      return ref.id;
+    },
+    deleteDraft(id) {
+      fire(deleteDoc(doc(col('drafts'), id)));
+    },
+
+    /* ---------- Stok ---------- */
+    watchStockLog(callback, onError) {
+      const q = query(col('stockLog'), orderBy('at', 'desc'), limit(300));
+      return onSnapshot(q, snapshotOptions, (snap) => {
+        callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, onError);
+    },
+    // moves: [{ itemId, delta, type, name, after, at, note, noLog }]
+    // Stok diubah dengan increment() supaya aman kalau dua HP menjual bersamaan.
+    applyStock(moves) {
+      const batch = writeBatch(db);
+      for (const m of moves) {
+        batch.set(doc(col('items'), m.itemId), { stock: increment(m.delta) }, { merge: true });
+        if (!m.noLog) {
+          batch.set(doc(col('stockLog')), {
+            itemId: m.itemId, name: m.name, type: m.type, qty: m.delta,
+            after: m.after, at: m.at, note: m.note || '', receiptId: m.receiptId ?? null,
+          });
+        }
+      }
+      fire(batch.commit());
     },
 
     /* ---------- Pengaturan bersama (nama bengkel) ---------- */

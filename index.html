@@ -11,7 +11,7 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Imada Motor</title>
-  <link rel="stylesheet" href="style.css?v=3.5.0">
+  <link rel="stylesheet" href="style.css?v=3.7.0">
   <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
   <style id="pageStyle"></style>
 </head>
@@ -52,7 +52,7 @@
     <button type="button" data-tab="home" class="active"><svg class="ic"><use href="#i-home"/></svg>Beranda</button>
     <button type="button" data-tab="calc"><svg class="ic"><use href="#i-receipt"/></svg>Buat Nota</button>
     <button type="button" data-tab="items"><svg class="ic"><use href="#i-tag"/></svg>Daftar Harga</button>
-    <button type="button" data-tab="history"><svg class="ic"><use href="#i-clock"/></svg>Riwayat Nota</button>
+    <button type="button" data-tab="history"><svg class="ic"><use href="#i-clock"/></svg>Riwayat</button>
     <button type="button" data-tab="settings"><svg class="ic"><use href="#i-sliders"/></svg>Pengaturan</button>
   </nav>
 
@@ -85,7 +85,7 @@
 
       <button type="button" class="home-primary" data-go="calc">
         <span class="home-icon"><svg class="ic"><use href="#i-receipt"/></svg></span>
-        <span class="grow"><strong>Buat Nota</strong><small>Pilih barang, isi pelanggan, lalu cetak</small></span>
+        <span class="grow"><strong>Buat Nota</strong><small id="homeCalcSub">Pilih barang, isi pelanggan, lalu cetak</small></span>
         <svg class="ic"><use href="#i-chevron"/></svg>
       </button>
 
@@ -97,7 +97,7 @@
         </button>
         <button type="button" data-go="history">
           <svg class="ic"><use href="#i-clock"/></svg>
-          <span class="grow"><strong>Riwayat Nota</strong><small id="homeReceiptCount">&nbsp;</small></span>
+          <span class="grow"><strong>Riwayat</strong><small id="homeReceiptCount">&nbsp;</small></span>
           <svg class="ic chev"><use href="#i-chevron"/></svg>
         </button>
         <button type="button" data-go="settings">
@@ -125,6 +125,14 @@
         <button id="btnManual" class="btn" type="button">Manual</button>
       </div>
       <ul id="calcResults" class="list results" hidden></ul>
+
+      <details id="draftBox" class="card cust drafts" hidden>
+        <summary>
+          <span class="cust-title">Draft nota</span>
+          <span id="draftSummary" class="cust-summary muted small"></span>
+        </summary>
+        <ul id="draftList" class="list"></ul>
+      </details>
 
       <details id="custBox" class="card cust">
         <summary>
@@ -155,10 +163,12 @@
         <input id="calcLabor" type="text" inputmode="numeric" placeholder="0" autocomplete="off">
       </div>
 
+      <button id="btnClear" class="link-btn" type="button">Kosongkan nota ini</button>
+
       <div class="totalbar">
-        <div class="total-line"><span>Total</span><strong id="cartTotal">Rp 0</strong></div>
+        <div class="total-line"><span class="total-label">Total <button id="btnQris" class="btn small" type="button" hidden>QRIS</button></span><strong id="cartTotal">Rp 0</strong></div>
         <div class="row">
-          <button id="btnClear" class="btn" type="button">Kosongkan</button>
+          <button id="btnDraft" class="btn" type="button">Simpan draft</button>
           <button id="btnPrint" class="btn primary grow" type="button">Cetak / PDF</button>
         </div>
       </div>
@@ -166,9 +176,23 @@
 
     <!-- ===== RIWAYAT NOTA ===== -->
     <section id="tab-history" class="tab">
-      <p class="muted">Nota yang pernah dicetak. Ketuk untuk melihat, mencetak ulang, atau menyalin ke totalan.</p>
-      <ul id="historyList" class="list"></ul>
-      <p id="historyEmpty" class="muted">Belum ada nota yang dicetak.</p>
+      <div class="seg" role="group" aria-label="Jenis riwayat">
+        <button type="button" class="active" data-hist="receipts">Nota</button>
+        <button type="button" data-hist="stock">Stok</button>
+      </div>
+
+      <div id="histReceipts">
+        <p class="muted">Nota yang pernah dicetak. Ketuk untuk melihat, mencetak ulang, atau menyalin ke totalan.</p>
+        <ul id="historyList" class="list"></ul>
+        <p id="historyEmpty" class="muted">Belum ada nota yang dicetak.</p>
+      </div>
+
+      <div id="histStock" hidden>
+        <input id="stockSearch" type="search" placeholder="Cari barang..." autocomplete="off">
+        <p class="muted small">Stok yang bertambah (beli barang), berkurang (terjual lewat nota), dan koreksi.</p>
+        <ul id="stockLogList" class="list"></ul>
+        <p id="stockLogEmpty" class="muted">Belum ada catatan stok.</p>
+      </div>
     </section>
 
     <!-- ===== PENGATURAN ===== -->
@@ -187,6 +211,20 @@
         <p class="muted">Terakhir disimpan: <strong id="lastBackup">-</strong></p>
         <button id="btnDownload" class="btn primary big" type="button" style="width:100%">Simpan cadangan sekarang</button>
         <p class="muted small">File masuk ke folder Download di HP. Kalau disimpan lagi, file baru ditambahkan (tidak menimpa), jadi pakai yang tanggalnya paling baru.</p>
+      </div>
+
+      <div class="card">
+        <h2>QRIS</h2>
+        <p class="muted small">Unggah gambar QRIS bengkel. QRIS bisa ditampilkan ke pelanggan lewat tombol QRIS di halaman Buat Nota. Kalau QRIS diganti, unggah yang baru di sini.</p>
+        <div id="qrisPreviewBox" class="qris-preview" hidden>
+          <img id="qrisPreview" alt="QRIS bengkel">
+        </div>
+        <p id="qrisEmpty" class="muted">Belum ada QRIS.</p>
+        <div class="row">
+          <label id="qrisPick" class="btn primary grow" for="qrisFile">Unggah QRIS</label>
+          <button id="btnQrisDelete" class="btn danger" type="button" hidden>Hapus</button>
+        </div>
+        <input id="qrisFile" type="file" accept="image/*" hidden>
       </div>
 
       <details class="card">
@@ -259,6 +297,28 @@
         <label for="itemPrice">Harga (Rp)</label>
         <input id="itemPrice" type="text" inputmode="numeric" required>
       </div>
+
+      <!-- Barang baru, atau barang lama yang belum dihitung stoknya -->
+      <div id="stockInitBlock" class="field">
+        <label for="stockInit" id="stockInitLabel">Stok awal <span class="muted">(kosongkan kalau tidak dihitung, misalnya jasa)</span></label>
+        <input id="stockInit" type="text" inputmode="numeric" placeholder="0">
+      </div>
+      <!-- Barang yang stoknya sudah dihitung -->
+      <div id="stockEditBlock" hidden>
+        <p class="stock-now">Stok sekarang: <strong id="stockNow">0</strong></p>
+        <div class="field">
+          <label for="stockAdd">Tambah stok <span class="muted">(beli barang baru)</span></label>
+          <input id="stockAdd" type="text" inputmode="numeric" placeholder="0">
+        </div>
+        <details class="stock-fix">
+          <summary>Koreksi stok (kalau hitungan tidak cocok)</summary>
+          <div class="field">
+            <label for="stockFix">Stok sebenarnya sekarang</label>
+            <input id="stockFix" type="text" inputmode="numeric" placeholder="Kosongkan kalau tidak dikoreksi">
+          </div>
+        </details>
+      </div>
+
       <div class="actions">
         <button type="button" id="btnDeleteItem" class="btn danger" hidden>Hapus</button>
         <span class="spacer"></span>
@@ -292,6 +352,17 @@
     </form>
   </dialog>
 
+  <!-- ===== DIALOG: TAMPILKAN QRIS KE PELANGGAN ===== -->
+  <dialog id="qrisDialog">
+    <h2>Bayar dengan QRIS</h2>
+    <p id="qrisAmount" class="qris-amount" hidden></p>
+    <img id="qrisImg" class="qris-img" alt="QRIS bengkel">
+    <p class="muted small">Pelanggan memindai kode ini lalu mengetik nominalnya. Pastikan pembayaran sudah masuk sebelum nota diserahkan.</p>
+    <div class="actions">
+      <button type="button" class="btn primary grow" data-close>Tutup</button>
+    </div>
+  </dialog>
+
   <!-- ===== DIALOG: DETAIL NOTA DI RIWAYAT ===== -->
   <dialog id="receiptDialog">
     <h2 id="receiptTitle">Nota</h2>
@@ -315,6 +386,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3.5.0"></script>
+  <script src="app.js?v=3.7.0"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
  */
 
 :root {
-  --css-version: '3.5.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
+  --css-version: '3.7.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #18202c;
@@ -208,6 +208,8 @@ input[type="checkbox"] { width: 1.3rem; height: 1.3rem; min-height: 0; }
 }
 .total-line { display: flex; justify-content: space-between; align-items: baseline; }
 .total-line strong { font-size: 1.3rem; font-weight: 750; }
+.totalbar .btn { white-space: nowrap; padding: 0 .8rem; }
+#btnDraft { flex: none; }
 
 /* ---------- Isian pelanggan (bisa dilipat), ongkos & baris totalan ---------- */
 details.card.cust { margin-bottom: .6rem; padding: 0 .9rem; }
@@ -277,8 +279,8 @@ dialog::backdrop { background: rgba(16, 24, 40, .45); }
 .actions .spacer { flex: 1; }
 
 #toast {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 1rem);
-  transform: translateX(-50%) translateY(20px);
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 4.2rem);
+  transform: translateX(-50%) translateY(-20px);
   max-width: 90vw;
   padding: .55rem 1rem;
   background: var(--primary); color: #fff; border-radius: .6rem; font-size: .88rem; font-weight: 600; text-align: center;
@@ -318,6 +320,49 @@ body.locked main, body.locked .menu-btn, body.locked .drawer, body.locked .scrim
 .line-row { display: flex; justify-content: space-between; gap: .5rem; }
 .line-row strong { white-space: nowrap; }
 .line-row .qty-price { color: var(--muted); font-size: .85rem; }
+
+/* ---------- Stok, draft, riwayat stok ---------- */
+.stock-tag { font-size: .78rem; color: var(--muted); }
+.stock-tag.low { color: var(--danger); font-weight: 650; }
+.stock-now { margin: 0 0 .6rem; }
+details.stock-fix { margin-bottom: .6rem; }
+details.stock-fix summary {
+  cursor: pointer; min-height: 2.2rem; display: flex; align-items: center;
+  font-size: .85rem; color: var(--muted);
+}
+.qty-price { color: var(--muted); font-size: .8rem; }
+.plus { color: #1a7f4b; }
+.minus { color: var(--danger); }
+
+.seg { display: flex; gap: .25rem; padding: .2rem; margin-bottom: .75rem; background: var(--soft); border-radius: .6rem; }
+.seg button {
+  flex: 1; min-height: 2.6rem;
+  font: inherit; font-weight: 600; color: var(--muted);
+  background: none; border: 0; border-radius: .45rem; cursor: pointer;
+}
+.seg button.active { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(16, 24, 40, .12); }
+#stockSearch { margin-bottom: .5rem; }
+
+.link-btn {
+  display: block; margin: .8rem auto 0; padding: .5rem;
+  font: inherit; font-size: .85rem; color: var(--muted);
+  background: none; border: 0; text-decoration: underline; cursor: pointer;
+}
+.link-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.drafts .list { margin-bottom: .6rem; }
+.drafts .list > li { display: flex; flex-direction: column; gap: .5rem; }
+.draft-info { min-width: 0; }
+.draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; }
+.draft-actions .btn.primary { flex: 1; }
+
+/* ---------- QRIS ---------- */
+.total-label { display: inline-flex; align-items: center; gap: .6rem; }
+.total-line:has(.total-label) { align-items: center; }
+.qris-preview { margin-bottom: .75rem; text-align: center; }
+.qris-preview img { max-width: 100%; max-height: 14rem; background: #fff; border: 1px solid var(--line); border-radius: .5rem; }
+.qris-img { display: block; width: 100%; max-height: 62vh; object-fit: contain; background: #fff; border: 1px solid var(--line); border-radius: .5rem; margin-bottom: .5rem; }
+.qris-amount { margin: 0 0 .6rem; text-align: center; font-size: 1.3rem; font-weight: 750; }
 
 /* ---------- Struk (hanya tampil saat cetak) ---------- */
 #printArea { display: none; }

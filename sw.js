@@ -20,7 +20,7 @@
  * Saat mengubah versi aplikasi, ubah 3 tempat: VERSION di sini (dan nama
  * cache), APP_VERSION di app.js, dan "?v=" di index.html.
  */
-const VERSION = '3.5.0';
+const VERSION = '3.7.0';
 const CACHE_NAME = 'harga-bengkel-v' + VERSION;
 
 // Alamat harus sama persis dengan yang dipakai index.html dan app.js (termasuk ?v=)
