@@ -27,7 +27,7 @@
  */
 'use strict';
 
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.9.2';
 const DB_NAME = 'harga-bengkel';
 const BACKUP_REMINDER_DAYS = 7;
 const MAX_HISTORY = 100;
@@ -368,7 +368,7 @@ async function removeItem() {
 
 /* ===================================================================
  * 4. TOTALAN (KERANJANG)
- * Bentuk satu baris: { key, itemId (kosong untuk barang manual), name, price, qty }
+ * Bentuk satu baris: { key, itemId, name, price, qty }
  * Keranjang hanya ada di memori (hilang kalau halaman ditutup).
  * =================================================================== */
 
@@ -404,7 +404,7 @@ function renderCalcResults() {
   if (found.length === 0) {
     rows.push(h('li', { class: 'tap' },
       h('button', { class: 'item-btn', type: 'button', onclick: () => openManualDialog(query) },
-        `Tidak ada. Tambah "${query}" sebagai KW / bekas`)));
+        `Tidak ada. Tambah "${query}" secara manual`)));
   }
   box.replaceChildren(...rows);
   box.hidden = false;
@@ -497,28 +497,44 @@ function cartRow(c) {
       subtotal));
 }
 
-// Barang KW / bekas / lainnya yang tidak ada di daftar barang. Stoknya tidak dihitung.
+// Barang di luar daftar barang (mis. beli di tempat lain). Stoknya tidak dihitung.
 function openManualDialog(name = '') {
   $('#manualForm').reset();
-  $('#manualKind').value = 'KW';
   $('#manualName').value = name;
   $('#manualQty').value = '1';
   $('#manualDialog').showModal();
 }
-function addManual(event) {
+
+async function addManual(event) {
   event.preventDefault();
-  const base = $('#manualName').value.trim();
-  const kind = $('#manualKind').value;   // "KW", "Bekas", atau kosong
+  const name = $('#manualName').value.trim();
   const rawPrice = $('#manualPrice').value.trim();
   const qty = Math.max(1, parsePrice($('#manualQty').value) || 1);
   const cost = parsePrice($('#manualCost').value) || 0;
-  if (!base || !rawPrice) return toast('Nama dan harga jual harus diisi');
+  if (!name || !rawPrice) return toast('Nama dan harga jual harus diisi');
+  const price = parsePrice(rawPrice);
+
+  // Boleh sekalian disimpan ke daftar barang (stok 0, karena barangnya langsung terjual)
+  if ($('#manualSave').checked) {
+    const dupe = items.find((i) => norm(i.name) === norm(name));
+    if (dupe) {
+      toast(`"${dupe.name}" sudah ada di daftar barang, tidak disimpan lagi`);
+    } else {
+      try {
+        const id = await data.saveItem({ name, cost, price, updatedAt: Date.now() });
+        await data.applyStock([{ itemId: id, delta: 0, type: 'in', noLog: true, name, at: Date.now(), after: 0 }]);
+      } catch (err) {
+        console.error(err);
+        toast('Barang masuk nota, tapi gagal disimpan ke daftar');
+      }
+    }
+  }
 
   cart.push({
     key: 'm' + Date.now() + Math.random(),
-    itemId: null,
-    name: kind ? `${base} (${kind})` : base,
-    price: parsePrice(rawPrice),
+    itemId: null,   // di luar daftar barang: stok tidak berkurang
+    name,
+    price,
     qty,
     cost: cost > 0 ? cost : null,   // harga beli (kalau diisi) dipakai menghitung untung
   });
@@ -1416,8 +1432,6 @@ function bindEvents() {
 
   // Totalan
   $('#calcSearch').addEventListener('input', renderCalcResults);
-  $('#btnManual').addEventListener('click', () => openManualDialog());
-  $('#manualForm').addEventListener('submit', addManual);
   $('#btnClear').addEventListener('click', clearCart);
   $('#btnDraft').addEventListener('click', saveDraftAndClear);
   $('#btnAddFinance').addEventListener('click', () => openFinanceDialog(null));
@@ -1438,6 +1452,8 @@ function bindEvents() {
   $('#btnQrisDelete').addEventListener('click', deleteQris);
   $('#btnPrint').addEventListener('click', () => finishNota(true));
   $('#btnSave').addEventListener('click', () => finishNota(false));
+  $('#btnManual').addEventListener('click', () => openManualDialog());
+  $('#manualForm').addEventListener('submit', addManual);
 
   // Riwayat
   $$('.seg [data-hist]').forEach((b) => b.addEventListener('click', () => showHist(b.dataset.hist)));

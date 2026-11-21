@@ -11,7 +11,7 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Imada Motor</title>
-  <link rel="stylesheet" href="style.css?v=3.9.0">
+  <link rel="stylesheet" href="style.css?v=3.9.2">
   <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
   <style id="pageStyle"></style>
 </head>
@@ -171,7 +171,7 @@
 
       <div class="toolbar">
         <input id="calcSearch" type="search" placeholder="Cari barang..." autocomplete="off">
-        <button id="btnManual" class="btn" type="button">KW / Bekas</button>
+        <button id="btnManual" class="btn" type="button">Manual</button>
       </div>
       <ul id="calcResults" class="list results" hidden></ul>
 
@@ -373,26 +373,19 @@
   </dialog>
 
   <!-- ===== DIALOG: BARANG MANUAL DI TOTALAN ===== -->
+  <!-- ===== DIALOG: TAMBAH BARANG MANUAL (di luar daftar barang) ===== -->
   <dialog id="manualDialog">
     <form id="manualForm" autocomplete="off">
-      <h2>Barang KW / bekas</h2>
-      <p class="muted small">Untuk barang di luar daftar barang. Stoknya tidak dihitung.</p>
-      <div class="field">
-        <label for="manualKind">Jenis</label>
-        <select id="manualKind">
-          <option value="KW">KW</option>
-          <option value="Bekas">Bekas</option>
-          <option value="">Lainnya (tanpa label)</option>
-        </select>
-      </div>
+      <h2>Tambah manual</h2>
+      <p class="muted small">Untuk barang yang tidak ada di daftar barang. Stoknya tidak dihitung.</p>
       <div class="field">
         <label for="manualName">Nama barang</label>
         <input id="manualName" type="text" required>
       </div>
       <div class="row">
         <div class="field grow">
-          <label for="manualCost">Harga beli <span class="muted">(opsional)</span></label>
-          <input id="manualCost" type="text" inputmode="numeric" placeholder="0">
+          <label for="manualCost">Harga beli</label>
+          <input id="manualCost" type="text" inputmode="numeric" placeholder="Boleh kosong">
         </div>
         <div class="field grow">
           <label for="manualPrice">Harga jual (Rp)</label>
@@ -403,6 +396,7 @@
         <label for="manualQty">Jumlah</label>
         <input id="manualQty" type="text" inputmode="numeric" value="1" required>
       </div>
+      <label class="check"><input type="checkbox" id="manualSave"> <span>Simpan juga ke daftar barang</span></label>
       <div class="actions">
         <button type="button" class="btn" data-close>Batal</button>
         <button type="submit" class="btn primary">Tambahkan</button>
@@ -473,6 +467,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3.9.0"></script>
+  <script src="app.js?v=3.9.2"></script>
 </body>
 </html>

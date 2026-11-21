@@ -5,7 +5,7 @@
  */
 
 :root {
-  --css-version: '3.9.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
+  --css-version: '3.9.2';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #18202c;
@@ -380,7 +380,7 @@ details.card.fin-detail .fin-profit { border-top: 1px solid var(--line); margin-
 details.card.fin-detail p { margin: .5rem 0 .6rem; }
 .item-btn > strong { white-space: nowrap; }
 
-/* Buat Nota: kolom cari dan tombol KW / Bekas satu baris */
+/* Buat Nota: kolom cari dan tombol Manual satu baris */
 #tab-calc .toolbar { flex-wrap: nowrap; }
 #tab-calc .toolbar input { flex: 1 1 0; }
 #tab-calc .toolbar .btn { flex: none; white-space: nowrap; }

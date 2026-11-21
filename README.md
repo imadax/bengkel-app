@@ -79,7 +79,7 @@ Coba: Pengaturan, Pengaturan lainnya, Masukkan data dari file cadangan, pilih `c
 2. Buka `http://localhost:8000`, tekan **F12**, tab **Application**, **Service workers**, klik **Unregister**.
 3. Tab **Application**, **Storage**, klik **Clear site data**.
 4. Tab **Network**, centang **Disable cache** (selama DevTools terbuka), lalu tekan **Ctrl+Shift+R**.
-5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.9.0). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
+5. Buka Pengaturan, Pengaturan lainnya, lihat panel **Diagnosa**: `app.js` dan `style.css` harus bertuliskan versi terbaru (3.9.2). Kalau salah satunya beda atau "TIDAK ADA", folder yang dilayani server bukan folder hasil ekstrak terbaru.
 
 **Saat mengubah kode sendiri**, naikkan nomor versi di 3 tempat supaya semua browser pasti mengambil file baru: `VERSION` di `sw.js`, `APP_VERSION` di `app.js`, dan `?v=` di `index.html` (dua tempat) serta `--css-version` di `style.css`.
 
