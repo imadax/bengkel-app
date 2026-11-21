@@ -5,7 +5,7 @@
  */
 
 :root {
-  --css-version: '3.8.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
+  --css-version: '3.9.0';   /* dibaca panel Diagnosa untuk mendeteksi style.css lama */
   --bg: #f5f6f8;
   --card: #ffffff;
   --text: #18202c;
@@ -380,6 +380,15 @@ details.card.fin-detail .fin-profit { border-top: 1px solid var(--line); margin-
 details.card.fin-detail p { margin: .5rem 0 .6rem; }
 .item-btn > strong { white-space: nowrap; }
 
+/* Buat Nota: kolom cari dan tombol KW / Bekas satu baris */
+#tab-calc .toolbar { flex-wrap: nowrap; }
+#tab-calc .toolbar input { flex: 1 1 0; }
+#tab-calc .toolbar .btn { flex: none; white-space: nowrap; }
+
+/* ---------- Daftar barang: urutkan ---------- */
+.sortbar { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; }
+.sortbar select { flex: 1; min-width: 0; }
+
 /* ---------- Struk (hanya tampil saat cetak) ---------- */
 #printArea { display: none; }
 
@@ -415,55 +424,71 @@ details.card.fin-detail p { margin: .5rem 0 .6rem; }
   .r-foot { text-align: center; margin-top: 8px; }
 }
 
-/* ---------- Nota cetak (meniru nota kertas) ---------- */
+/* ---------- Nota (dipakai untuk cetak dan untuk detail nota di Riwayat) ---------- */
+.pn {
+  --ink: #000;
+  --c1: 20mm; --c3: 28mm; --c4: 32mm;   /* lebar kolom: banyaknya, harga, jumlah */
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+}
+.pn-head { display: flex; gap: 3mm; align-items: flex-start; margin-bottom: 3mm; }
+.pn-brand { flex: 1.3 1 0; min-width: 0; text-align: center; }
+.pn-shop { font-size: 1.9em; font-weight: 900; line-height: 1.05; text-transform: uppercase; overflow-wrap: anywhere; }
+.pn-tag { margin-top: .3em; font-weight: 800; text-transform: uppercase; }
+.pn-addr, .pn-tel { font-weight: 700; font-size: .95em; }
+.pn-to { flex: 1 1 0; min-width: 0; }
+.pn-line { min-height: 1.7em; padding-top: .3em; font-weight: 700; border-bottom: 1px dotted var(--ink); overflow-wrap: anywhere; }
+.pn-date { font-weight: 400; font-size: .85em; }
+.pn-note { margin-bottom: 2mm; font-weight: 700; }
+
+.pn-th, .pn-row { display: grid; grid-template-columns: var(--c1) minmax(0, 1fr) var(--c3) var(--c4); }
+.pn-th { border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); font-weight: 800; font-size: .8em; text-align: center; }
+.pn-th > div { padding: 1.5mm 1mm; border-left: 1px solid var(--ink); }
+.pn-row { border-bottom: 1px solid var(--ink); break-inside: avoid; }
+.pn-row > div { padding: 1mm 1.5mm; border-left: 1px solid var(--ink); overflow-wrap: anywhere; }
+.pn-th > div:first-child, .pn-row > div:first-child { border-left: 0; }
+.pn-row .c { text-align: center; }
+.pn-row .rt { text-align: right; }
+.pn-row .nm, .pn-row .b { font-weight: 700; }
+
+.pn-sum { display: flex; justify-content: flex-end; align-items: flex-end; gap: 3mm; margin-top: 3mm; }
+.pn-sum span { font-weight: 800; }
+.pn-sum strong {
+  min-width: 32mm; padding: 1mm 2mm; text-align: right; font-size: 1.2em;
+  border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); border-bottom: 3px double var(--ink);
+}
+
+/* Kertas 58 mm: tanpa tabel, nama barang di atas, banyaknya x harga di bawah */
+.pn-58 .pn-head { display: block; }
+.pn-58 .pn-brand { margin-bottom: 2mm; }
+.pn-58 .pn-shop { font-size: 1.5em; }
+.pn-58 .pn-line { min-height: 0; padding: 0; border-bottom: 0; }
+.pn-rule { border-top: 1px dashed #000; margin: 2mm 0; }
+.pn-58 .pn-sum { border-top: 1px dashed #000; padding-top: 2mm; }
+.pn-58 .pn-sum strong { border: 0; padding: 0; min-width: 0; }
+
+/* Khusus cetak */
 @media print {
-  #printArea .pn {
-    --ink: #000;
-    --c1: 20mm; --c3: 28mm; --c4: 32mm;
-    font-family: Arial, Helvetica, sans-serif;
-    color: var(--ink);
-    -webkit-print-color-adjust: exact; print-color-adjust: exact;
-  }
+  #printArea .pn { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   #printArea[data-paper="A4"] .pn, #printArea[data-paper="A5"] .pn { --ink: #264f9f; }
   #printArea[data-paper="80"] .pn { --c1: 12mm; --c3: 15mm; --c4: 17mm; font-size: 10px; }
   #printArea[data-paper="80"] .pn-th { font-size: .62em; }
   #printArea[data-paper="80"] .pn-th > div { padding: 1.5mm 0; }
-
-  .pn-head { display: flex; gap: 3mm; align-items: flex-start; margin-bottom: 3mm; }
-  .pn-brand { flex: 1.3 1 0; min-width: 0; text-align: center; }
-  .pn-shop { font-size: 1.9em; font-weight: 900; line-height: 1.05; text-transform: uppercase; overflow-wrap: anywhere; }
-  .pn-tag { margin-top: .3em; font-weight: 800; text-transform: uppercase; }
-  .pn-addr, .pn-tel { font-weight: 700; font-size: .95em; }
-  .pn-to { flex: 1 1 0; min-width: 0; }
-  .pn-line { min-height: 1.7em; padding-top: .3em; font-weight: 700; border-bottom: 1px dotted var(--ink); overflow-wrap: anywhere; }
-  .pn-date { font-weight: 400; font-size: .85em; }
-  .pn-note { margin-bottom: 2mm; font-weight: 700; }
-
-  .pn-th, .pn-row { display: grid; grid-template-columns: var(--c1) minmax(0, 1fr) var(--c3) var(--c4); }
-  .pn-table { border-bottom: 0; }
-  .pn-th { border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); font-weight: 800; font-size: .8em; text-align: center; }
-  .pn-th > div { padding: 1.5mm 1mm; border-left: 1px solid var(--ink); }
-  .pn-row { border-bottom: 1px solid var(--ink); break-inside: avoid; }
-  .pn-row > div { padding: 1mm 1.5mm; border-left: 1px solid var(--ink); overflow-wrap: anywhere; }
-  .pn-th > div:first-child, .pn-row > div:first-child { border-left: 0; }
-  .pn-row .c { text-align: center; }
-  .pn-row .rt { text-align: right; }
-  .pn-row .nm, .pn-row .b { font-weight: 700; }
   #printArea[data-paper="A4"] .pn-row, #printArea[data-paper="A5"] .pn-row { min-height: 9mm; }
-
-  .pn-sum { display: flex; justify-content: flex-end; align-items: flex-end; gap: 3mm; margin-top: 3mm; }
-  .pn-sum span { font-weight: 800; }
-  .pn-sum strong {
-    min-width: 32mm; padding: 1mm 2mm; text-align: right; font-size: 1.2em;
-    border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); border-bottom: 3px double var(--ink);
-  }
-
-  /* Kertas 58 mm: tanpa tabel, nama barang di atas, banyaknya x harga di bawah */
-  .pn-58 .pn-head { display: block; }
-  .pn-58 .pn-brand { margin-bottom: 2mm; }
-  .pn-58 .pn-shop { font-size: 1.5em; }
-  .pn-58 .pn-line { min-height: 0; padding: 0; border-bottom: 0; }
-  .pn-rule { border-top: 1px dashed #000; margin: 2mm 0; }
-  .pn-58 .pn-sum { border-top: 1px dashed #000; padding-top: 2mm; }
-  .pn-58 .pn-sum strong { border: 0; padding: 0; min-width: 0; }
 }
+
+/* Detail nota di Riwayat: kertas abu-biru, tinta biru, seperti nota asli */
+.receipt-dialog { width: min(96vw, 30rem); }
+.nota-view {
+  margin-bottom: .75rem; padding: .9rem .7rem 1rem;
+  background: radial-gradient(ellipse at 15% 5%, rgba(255, 255, 255, .5), transparent 55%), #eceff3;
+  border: 1px solid #d6dce3; border-radius: .3rem;
+  box-shadow: 0 .1em .6em rgba(16, 24, 40, .08);
+}
+.nota-view .pn { --ink: #264f9f; --c1: 2.4rem; --c3: 3.2rem; --c4: 3.5rem; font-size: min(.62rem, 3.2vw); }
+.nota-view .pn-shop { font-size: 1.6em; }
+.nota-view .pn-th { font-size: .56em; }
+.nota-view .pn-row { min-height: 1.8rem; }
+.nota-view .pn-sum strong { min-width: 7em; }
+.receipt-dialog .btn { padding: 0 .4rem; font-size: .9rem; white-space: nowrap; }
+

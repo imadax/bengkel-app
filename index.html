@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#1d3557">
   <meta name="application-name" content="Imada Motor">
   <meta name="apple-mobile-web-app-title" content="Imada Motor">
-  <meta name="description" content="Nota dan daftar harga Imada Motor">
+  <meta name="description" content="Nota dan daftar barang Imada Motor">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Imada Motor</title>
-  <link rel="stylesheet" href="style.css?v=3.8.0">
+  <link rel="stylesheet" href="style.css?v=3.9.0">
   <!-- Isi style ini diatur dari app.js (ukuran kertas cetak) -->
   <style id="pageStyle"></style>
 </head>
@@ -48,11 +48,11 @@
   <nav id="drawer" class="drawer" aria-label="Menu utama" aria-hidden="true">
     <div class="drawer-head">
       <div id="drawerShop" class="drawer-brand">IMADA MOTOR</div>
-      <div class="drawer-sub">Nota &amp; daftar harga</div>
+      <div class="drawer-sub">Nota &amp; daftar barang</div>
     </div>
     <button type="button" data-tab="home" class="active"><svg class="ic"><use href="#i-home"/></svg>Beranda</button>
     <button type="button" data-tab="calc"><svg class="ic"><use href="#i-receipt"/></svg>Buat Nota</button>
-    <button type="button" data-tab="items"><svg class="ic"><use href="#i-tag"/></svg>Daftar Harga</button>
+    <button type="button" data-tab="items"><svg class="ic"><use href="#i-tag"/></svg>Daftar Barang</button>
     <button type="button" data-tab="finance"><svg class="ic"><use href="#i-wallet"/></svg>Keuangan</button>
     <button type="button" data-tab="history"><svg class="ic"><use href="#i-clock"/></svg>Riwayat</button>
     <button type="button" data-tab="settings"><svg class="ic"><use href="#i-sliders"/></svg>Pengaturan</button>
@@ -61,7 +61,7 @@
   <!-- ===== LAYAR LOGIN (hanya mode cloud) ===== -->
   <section id="loginScreen" class="login" hidden>
     <h2>Selamat datang di Imada Motor</h2>
-    <p>Masuk dengan akun Google supaya daftar harga dan nota tersimpan aman di internet dan bisa dibuka dari HP mana pun.</p>
+    <p>Masuk dengan akun Google supaya daftar barang dan nota tersimpan aman di internet dan bisa dibuka dari HP mana pun.</p>
     <button id="btnLogin" class="btn primary big" type="button" disabled>Masuk dengan Google</button>
     <p id="loginMsg" class="muted">Memuat…</p>
   </section>
@@ -94,7 +94,7 @@
       <div class="home-list">
         <button type="button" data-go="items">
           <svg class="ic"><use href="#i-tag"/></svg>
-          <span class="grow"><strong>Daftar Harga</strong><small id="homeItemCount">&nbsp;</small></span>
+          <span class="grow"><strong>Daftar Barang</strong><small id="homeItemCount">&nbsp;</small></span>
           <svg class="ic chev"><use href="#i-chevron"/></svg>
         </button>
         <button type="button" data-go="finance">
@@ -121,18 +121,25 @@
         <input id="itemSearch" type="search" placeholder="Cari barang..." autocomplete="off">
         <button id="btnAddItem" class="btn primary" type="button">+ Barang</button>
       </div>
+      <div class="sortbar">
+        <label for="itemSort" class="muted small">Urutkan</label>
+        <select id="itemSort">
+          <option value="name">Nama (A–Z)</option>
+          <option value="stockAsc">Stok paling sedikit</option>
+          <option value="stockDesc">Stok paling banyak</option>
+          <option value="priceAsc">Harga jual termurah</option>
+          <option value="priceDesc">Harga jual termahal</option>
+          <option value="costAsc">Harga beli termurah</option>
+          <option value="costDesc">Harga beli termahal</option>
+        </select>
+      </div>
       <p id="itemCount" class="muted"></p>
       <ul id="itemList" class="list"></ul>
     </section>
 
     <!-- ===== BUAT NOTA ===== -->
     <section id="tab-calc" class="tab">
-      <div class="toolbar">
-        <input id="calcSearch" type="search" placeholder="Cari barang untuk ditambah..." autocomplete="off">
-        <button id="btnManual" class="btn" type="button">Manual</button>
-      </div>
-      <ul id="calcResults" class="list results" hidden></ul>
-
+      <!-- Urutan mengikuti nota: draft, data pelanggan, barang, ongkos -->
       <details id="draftBox" class="card cust drafts" hidden>
         <summary>
           <span class="cust-title">Draft nota</span>
@@ -162,6 +169,12 @@
         </div>
       </details>
 
+      <div class="toolbar">
+        <input id="calcSearch" type="search" placeholder="Cari barang..." autocomplete="off">
+        <button id="btnManual" class="btn" type="button">KW / Bekas</button>
+      </div>
+      <ul id="calcResults" class="list results" hidden></ul>
+
       <ul id="cartList" class="list"></ul>
       <p id="cartEmpty" class="muted">Belum ada barang. Cari di atas lalu ketuk barangnya.</p>
 
@@ -175,8 +188,9 @@
       <div class="totalbar">
         <div class="total-line"><span class="total-label">Total <button id="btnQris" class="btn small" type="button" hidden>QRIS</button></span><strong id="cartTotal">Rp 0</strong></div>
         <div class="row">
-          <button id="btnDraft" class="btn" type="button">Simpan draft</button>
-          <button id="btnPrint" class="btn primary grow" type="button">Cetak / PDF</button>
+          <button id="btnDraft" class="btn" type="button" aria-label="Simpan sebagai draft">Draft</button>
+          <button id="btnSave" class="btn grow" type="button" aria-label="Simpan nota tanpa mencetak">Simpan</button>
+          <button id="btnPrint" class="btn primary grow" type="button" aria-label="Simpan nota dan cetak">Cetak</button>
         </div>
       </div>
     </section>
@@ -344,29 +358,9 @@
         </div>
       </div>
 
-      <!-- Barang baru -->
-      <div id="stockInitBlock">
-        <div class="field">
-          <label for="stockInit">Stok awal</label>
-          <input id="stockInit" type="text" inputmode="numeric" value="1">
-        </div>
-        <label class="check"><input type="checkbox" id="initExpense"> <span>Catat sebagai pengeluaran <span id="initExpenseAmt" class="muted"></span></span></label>
-      </div>
-      <!-- Barang yang sudah ada -->
-      <div id="stockEditBlock" hidden>
-        <p class="stock-now">Stok sekarang: <strong id="stockNow">0</strong></p>
-        <div class="field">
-          <label for="stockAdd">Tambah stok <span class="muted">(beli barang baru)</span></label>
-          <input id="stockAdd" type="text" inputmode="numeric" placeholder="0">
-        </div>
-        <label class="check"><input type="checkbox" id="addExpense" checked> <span>Catat sebagai pengeluaran <span id="addExpenseAmt" class="muted"></span></span></label>
-        <details class="stock-fix">
-          <summary>Koreksi stok (kalau hitungan tidak cocok)</summary>
-          <div class="field">
-            <label for="stockFix">Stok sebenarnya sekarang</label>
-            <input id="stockFix" type="text" inputmode="numeric" placeholder="Kosongkan kalau tidak dikoreksi">
-          </div>
-        </details>
+      <div class="field">
+        <label for="itemStock">Stok saat ini</label>
+        <input id="itemStock" type="text" inputmode="numeric" value="1">
       </div>
 
       <div class="actions">
@@ -381,20 +375,34 @@
   <!-- ===== DIALOG: BARANG MANUAL DI TOTALAN ===== -->
   <dialog id="manualDialog">
     <form id="manualForm" autocomplete="off">
-      <h2>Tambah manual</h2>
+      <h2>Barang KW / bekas</h2>
+      <p class="muted small">Untuk barang di luar daftar barang. Stoknya tidak dihitung.</p>
       <div class="field">
-        <label for="manualName">Nama barang / jasa</label>
-        <input id="manualName" type="text" required>
+        <label for="manualKind">Jenis</label>
+        <select id="manualKind">
+          <option value="KW">KW</option>
+          <option value="Bekas">Bekas</option>
+          <option value="">Lainnya (tanpa label)</option>
+        </select>
       </div>
       <div class="field">
-        <label for="manualPrice">Harga satuan (Rp)</label>
-        <input id="manualPrice" type="text" inputmode="numeric" required>
+        <label for="manualName">Nama barang</label>
+        <input id="manualName" type="text" required>
+      </div>
+      <div class="row">
+        <div class="field grow">
+          <label for="manualCost">Harga beli <span class="muted">(opsional)</span></label>
+          <input id="manualCost" type="text" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="field grow">
+          <label for="manualPrice">Harga jual (Rp)</label>
+          <input id="manualPrice" type="text" inputmode="numeric" required>
+        </div>
       </div>
       <div class="field">
         <label for="manualQty">Jumlah</label>
         <input id="manualQty" type="text" inputmode="numeric" value="1" required>
       </div>
-      <label class="check"><input id="manualSave" type="checkbox"> Simpan juga ke daftar barang</label>
       <div class="actions">
         <button type="button" class="btn" data-close>Batal</button>
         <button type="submit" class="btn primary">Tambahkan</button>
@@ -446,11 +454,8 @@
   </dialog>
 
   <!-- ===== DIALOG: DETAIL NOTA DI RIWAYAT ===== -->
-  <dialog id="receiptDialog">
-    <h2 id="receiptTitle">Nota</h2>
-    <p id="receiptNote" class="muted" hidden></p>
-    <ul id="receiptLines" class="list lines"></ul>
-    <div class="total-line"><span>Total</span><strong id="receiptTotal">Rp 0</strong></div>
+  <dialog id="receiptDialog" class="receipt-dialog">
+    <div id="receiptNota" class="nota-view"></div>
     <div class="actions">
       <button type="button" id="btnReprint" class="btn primary grow">Cetak ulang</button>
       <button type="button" id="btnReuse" class="btn grow">Salin ke totalan</button>
@@ -468,6 +473,6 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="firebase-config.js"></script>
-  <script src="app.js?v=3.8.0"></script>
+  <script src="app.js?v=3.9.0"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
   "name": "Imada Motor",
   "short_name": "Imada Motor",
-  "description": "Nota dan daftar harga Imada Motor",
+  "description": "Nota dan daftar barang Imada Motor",
   "lang": "id",
   "start_url": "./",
   "scope": "./",
